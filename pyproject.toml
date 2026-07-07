@@ -1,7 +1,23 @@
 [project]
 name = "lab-storage-management"
 version = "0.1.0"
-description = "Add your description here"
+description = "Learning-friendly FastAPI backend for a lab storage management project."
 readme = "README.md"
-requires-python = ">=3.13"
-dependencies = []
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "pydantic-settings>=2.5.0",
+    "pymysql>=1.1.1",
+    "sqlalchemy>=2.0.35",
+    "uvicorn[standard]>=0.30.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.27.0",
+    "pytest>=8.3.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

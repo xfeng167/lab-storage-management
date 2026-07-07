@@ -454,4 +454,11 @@ The first useful version should focus on one complete backend workflow:
 
 ## Current Status
 
-Planning. No application code has been added yet.
+Early implementation. The repository now contains a minimal FastAPI starter framework for the
+first learning milestone:
+
+- `GET /health` confirms the API is running.
+- `/test-table` shows simple MySQL CRUD against the existing `test_table`.
+- `/users/register`, `/users/login`, and `/users/logout` provide the first user module skeleton.
+
+See `docs/development.md` for local setup, table SQL, and run commands.
