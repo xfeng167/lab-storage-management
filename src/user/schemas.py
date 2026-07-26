@@ -11,6 +11,8 @@ class UserLogin(BaseModel):
     username: str
     password: str
 
+class Token(BaseModel):
+    token: str
 
 class UserRead(BaseModel):
     id: int

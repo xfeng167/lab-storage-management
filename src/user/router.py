@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 
 from src.db.connection import get_db
 from src.user import service
-from src.user.schemas import LoginResponse, LogoutResponse, UserCreate, UserLogin, UserRead
+from src.user.schemas import LoginResponse, LogoutResponse, UserCreate, UserLogin, UserRead, Token
+from src.utils.security import verify_token
 
 router = APIRouter()
 
@@ -33,5 +34,20 @@ def login_user(payload: UserLogin, db: Session = Depends(get_db)) -> LoginRespon
 
 
 @router.post("/logout", response_model=LogoutResponse)
-def logout_user() -> LogoutResponse:
+def logout_user(payload: Token, db: Session = Depends(get_db)) -> LogoutResponse:
+    logout_result = service.logout_user(db, payload)
+    if not logout_result:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Logout failed",
+        )
     return LogoutResponse(message="Logout received. The client can forget the current token.")
+
+@router.get("", response_model=list[UserRead])
+def list_users(payload: Token, db: Session = Depends(get_db)) -> list[UserRead]:
+    if not verify_token(payload.token, db):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+    return service.list_users(db)

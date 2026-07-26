@@ -1,6 +1,13 @@
 import base64
+from datetime import datetime, timedelta
+from sqlalchemy import text
 import hashlib
 import secrets
+from sqlalchemy.orm import Session
+
+from fastapi.params import Depends
+
+from src.db.connection import get_db
 
 
 def hash_password(password: str) -> str:
@@ -23,3 +30,20 @@ def verify_password(password: str, stored_password: str) -> bool:
 
 def create_demo_token() -> str:
     return secrets.token_urlsafe(32)
+
+def verify_token(token: str, db: Session = Depends(get_db)) -> bool:
+    result = db.execute(
+        text("SELECT user_id, created_at FROM token_table WHERE token = :token"),
+        {"token": token},
+    ).mappings().first()
+
+    if result is None:
+        return False
+    if result["created_at"] is None:
+        return False
+    if result["user_id"] is None:
+        return False
+    if result["created_at"] < (datetime.utcnow() - timedelta(hours=1)):
+        return False
+    return True
+
