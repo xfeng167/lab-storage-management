@@ -18,7 +18,7 @@ class UserRead(BaseModel):
     id: int
     username: str
     email: str
-
+    role: str
 
 class LoginResponse(BaseModel):
     user: UserRead

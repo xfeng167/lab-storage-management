@@ -22,6 +22,8 @@ Database: lab_storage_db
 User: lab_user
 Password: lab_password
 Port: 3306
+Server: mysql
+http://localhost:8080/?server=mysql&username=lab_user&db=lab_storage_db
 ```
 
 ## 3. Create Learning Tables

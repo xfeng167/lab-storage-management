@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from src.db.connection import get_db
 from src.user import service
 from src.user.schemas import LoginResponse, LogoutResponse, UserCreate, UserLogin, UserRead, Token
-from src.utils.security import verify_token
+from src.auth.dependencies import get_current_user, require_admin_user
 
 router = APIRouter()
 
@@ -44,10 +44,16 @@ def logout_user(payload: Token, db: Session = Depends(get_db)) -> LogoutResponse
     return LogoutResponse(message="Logout received. The client can forget the current token.")
 
 @router.get("", response_model=list[UserRead])
-def list_users(payload: Token, db: Session = Depends(get_db)) -> list[UserRead]:
-    if not verify_token(payload.token, db):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
+def list_users(
+    current_user: UserRead = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> list[UserRead]:
     return service.list_users(db)
+
+
+@router.get("/me", response_model=UserRead)
+def check_user(
+    current_user: UserRead = Depends(get_current_user),
+) -> UserRead:
+    return current_user
+
