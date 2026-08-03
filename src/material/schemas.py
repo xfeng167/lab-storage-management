@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from datetime import datetime
 
 class MaterialCreate(BaseModel):
     material_code: str
@@ -18,14 +19,22 @@ class MaterialRead(BaseModel):
     material_code: str
     material_name: str
     material_type: str
-    description: str
-    source: str
+    description: str | None = None
+    source: str | None = None
     quantity_available: int
+    quantity_reserved: int
     unit: str
     minimum_quantity: int
+    availability_status: str
     qc_status: str
-    storage_condition: str
-    location_id: int    
+    storage_condition: str | None = None
+    location_id: int | None = None
+    is_archived: bool
+    archived_at: datetime | None = None
+    archived_by_user_id: int | None = None
+    archive_reason: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None  
 
 class MaterialUpdate(BaseModel):
     material_name: str | None = None

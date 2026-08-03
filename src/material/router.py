@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from src.auth.dependencies import get_current_user, require_staff_user
+from src.auth.dependencies import get_current_user, require_staff_user, require_admin_user
 from src.db.connection import get_db
 from src.material import service
 from src.material.schemas import MaterialCreate, MaterialRead, MaterialUpdate
@@ -76,7 +76,7 @@ def update_material(
 def archive_material(
     material_id: int,
     reason: str,
-    current_user: UserRead = Depends(require_staff_user),
+    current_user: UserRead = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> dict:
     success = service.archive_material(db, material_id, current_user.id, reason)
@@ -90,7 +90,7 @@ def archive_material(
 @router.post("/{material_id}/restore", status_code=status.HTTP_200_OK)
 def restore_material(
     material_id: int,
-    current_user: UserRead = Depends(require_staff_user),
+    current_user: UserRead = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> dict:
     success = service.restore_material(db, material_id)
