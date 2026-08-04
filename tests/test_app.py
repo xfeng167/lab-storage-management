@@ -84,3 +84,47 @@ def test_update_location_requires_auth() -> None:
     response = client.patch("/locations/1", json={})
 
     assert response.status_code == 401
+
+
+def test_adjust_quantity_requires_auth() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/materials/1/adjust-quantity",
+        json={"quantity_available": 5, "reason": "cycle count correction"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_check_in_requires_auth() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/materials/1/check-in",
+        json={"quantity": 2, "reason": "received new stock"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_check_out_requires_auth() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/materials/1/check-out",
+        json={"quantity": 2, "reason": "used in experiment"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_move_material_requires_auth() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/materials/1/move",
+        json={"location_id": 1, "reason": "moved to freezer rack"},
+    )
+
+    assert response.status_code == 401

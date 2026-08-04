@@ -1,6 +1,14 @@
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from src.material.schemas import MaterialCreate, MaterialRead, MaterialUpdate
+
+from src.material.schemas import (
+    MaterialCreate,
+    MaterialMove,
+    MaterialRead,
+    MaterialUpdate,
+    QuantityAdjustment,
+    QuantityChange,
+)
 
 
 def _location_exists(db: Session, location_id: int | None) -> bool:
@@ -12,6 +20,47 @@ def _location_exists(db: Session, location_id: int | None) -> bool:
         {"location_id": location_id},
     ).first()
     return location is not None
+
+
+def _log_inventory_audit(
+    db: Session,
+    user_id: int,
+    material_id: int,
+    operation_type: str,
+    before_value: str,
+    after_value: str,
+    reason: str,
+) -> None:
+    db.execute(
+        text(
+            """
+            INSERT INTO inventory_audit_logs (
+                user_id,
+                material_id,
+                operation_type,
+                before_value,
+                after_value,
+                reason
+            )
+            VALUES (
+                :user_id,
+                :material_id,
+                :operation_type,
+                :before_value,
+                :after_value,
+                :reason
+            )
+            """
+        ),
+        {
+            "user_id": user_id,
+            "material_id": material_id,
+            "operation_type": operation_type,
+            "before_value": before_value,
+            "after_value": after_value,
+            "reason": reason,
+        },
+    )
 
 
 def list_materials(db: Session) -> list[MaterialRead]:
@@ -47,6 +96,172 @@ def list_materials(db: Session) -> list[MaterialRead]:
     ).mappings().all()
 
     return [MaterialRead(**row) for row in rows]
+
+
+def adjust_quantity(
+    db: Session,
+    material_id: int,
+    user_id: int,
+    payload: QuantityAdjustment,
+) -> MaterialRead | None:
+    row = db.execute(
+        text("SELECT quantity_available FROM materials WHERE id = :material_id"),
+        {"material_id": material_id},
+    ).mappings().first()
+
+    if row is None:
+        return None
+
+    before_quantity = row["quantity_available"]
+    after_quantity = payload.quantity_available
+    db.execute(
+        text(
+            """
+            UPDATE materials
+            SET quantity_available = :quantity_available
+            WHERE id = :material_id
+            """
+        ),
+        {"material_id": material_id, "quantity_available": after_quantity},
+    )
+    _log_inventory_audit(
+        db,
+        user_id,
+        material_id,
+        "adjust_quantity",
+        str(before_quantity),
+        str(after_quantity),
+        payload.reason,
+    )
+    db.commit()
+
+    return get_material(db, material_id)
+
+
+def check_in_material(
+    db: Session,
+    material_id: int,
+    user_id: int,
+    payload: QuantityChange,
+) -> MaterialRead | None:
+    row = db.execute(
+        text("SELECT quantity_available FROM materials WHERE id = :material_id"),
+        {"material_id": material_id},
+    ).mappings().first()
+
+    if row is None:
+        return None
+
+    before_quantity = row["quantity_available"]
+    after_quantity = before_quantity + payload.quantity
+    db.execute(
+        text(
+            """
+            UPDATE materials
+            SET quantity_available = :quantity_available
+            WHERE id = :material_id
+            """
+        ),
+        {"material_id": material_id, "quantity_available": after_quantity},
+    )
+    _log_inventory_audit(
+        db,
+        user_id,
+        material_id,
+        "check_in",
+        str(before_quantity),
+        str(after_quantity),
+        payload.reason,
+    )
+    db.commit()
+
+    return get_material(db, material_id)
+
+
+def check_out_material(
+    db: Session,
+    material_id: int,
+    user_id: int,
+    payload: QuantityChange,
+) -> MaterialRead | None:
+    row = db.execute(
+        text("SELECT quantity_available FROM materials WHERE id = :material_id"),
+        {"material_id": material_id},
+    ).mappings().first()
+
+    if row is None:
+        return None
+
+    before_quantity = row["quantity_available"]
+    after_quantity = before_quantity - payload.quantity
+    if after_quantity < 0:
+        return None
+
+    db.execute(
+        text(
+            """
+            UPDATE materials
+            SET quantity_available = :quantity_available
+            WHERE id = :material_id
+            """
+        ),
+        {"material_id": material_id, "quantity_available": after_quantity},
+    )
+    _log_inventory_audit(
+        db,
+        user_id,
+        material_id,
+        "check_out",
+        str(before_quantity),
+        str(after_quantity),
+        payload.reason,
+    )
+    db.commit()
+
+    return get_material(db, material_id)
+
+
+def move_material(
+    db: Session,
+    material_id: int,
+    user_id: int,
+    payload: MaterialMove,
+) -> MaterialRead | None:
+    if not _location_exists(db, payload.location_id):
+        return None
+
+    row = db.execute(
+        text("SELECT location_id FROM materials WHERE id = :material_id"),
+        {"material_id": material_id},
+    ).mappings().first()
+
+    if row is None:
+        return None
+
+    before_location_id = row["location_id"]
+    after_location_id = payload.location_id
+    db.execute(
+        text(
+            """
+            UPDATE materials
+            SET location_id = :location_id
+            WHERE id = :material_id
+            """
+        ),
+        {"material_id": material_id, "location_id": after_location_id},
+    )
+    _log_inventory_audit(
+        db,
+        user_id,
+        material_id,
+        "move",
+        str(before_location_id),
+        str(after_location_id),
+        payload.reason,
+    )
+    db.commit()
+
+    return get_material(db, material_id)
 
 def get_material(db: Session, material_id: int) -> MaterialRead | None:
     row = db.execute(
@@ -301,7 +516,6 @@ def search_materials(
     ).mappings().all()
 
     return [MaterialRead(**row) for row in rows]
-
 
 
 

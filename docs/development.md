@@ -106,6 +106,23 @@ CREATE TABLE IF NOT EXISTS locations (
 );
 ```
 
+Create the inventory audit table:
+
+```sql
+CREATE TABLE IF NOT EXISTS inventory_audit_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    material_id INT NOT NULL,
+    operation_type VARCHAR(80) NOT NULL,
+    before_value VARCHAR(255) NOT NULL,
+    after_value VARCHAR(255) NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (material_id) REFERENCES materials(id)
+);
+```
+
 ## 4. Run the API
 
 ```bash
@@ -155,6 +172,10 @@ POST /materials
 PATCH /materials/{material_id}
 POST /materials/{material_id}/archive
 POST /materials/{material_id}/restore
+POST /materials/{material_id}/adjust-quantity
+POST /materials/{material_id}/check-in
+POST /materials/{material_id}/check-out
+POST /materials/{material_id}/move
 ```
 
 Location module:

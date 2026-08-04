@@ -1,5 +1,6 @@
-from pydantic import BaseModel
 from datetime import datetime
+
+from pydantic import BaseModel, Field
 
 class MaterialCreate(BaseModel):
     material_code: str
@@ -46,4 +47,18 @@ class MaterialUpdate(BaseModel):
     qc_status: str | None = None
     storage_condition: str | None = None
     location_id: int | None = None
-    
+
+
+class QuantityAdjustment(BaseModel):
+    quantity_available: int = Field(ge=0)
+    reason: str
+
+
+class QuantityChange(BaseModel):
+    quantity: int = Field(gt=0)
+    reason: str
+
+
+class MaterialMove(BaseModel):
+    location_id: int | None = None
+    reason: str

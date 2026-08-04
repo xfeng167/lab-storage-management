@@ -4,7 +4,14 @@ from sqlalchemy.orm import Session
 from src.auth.dependencies import get_current_user, require_staff_user, require_admin_user
 from src.db.connection import get_db
 from src.material import service
-from src.material.schemas import MaterialCreate, MaterialRead, MaterialUpdate
+from src.material.schemas import (
+    MaterialCreate,
+    MaterialMove,
+    MaterialRead,
+    MaterialUpdate,
+    QuantityAdjustment,
+    QuantityChange,
+)
 from src.user.schemas import UserRead
 
 router = APIRouter()
@@ -102,3 +109,66 @@ def restore_material(
         )
     return {"message": "Material restored successfully"}    
 
+
+@router.post("/{material_id}/adjust-quantity", response_model=MaterialRead)
+def adjust_quantity(
+    material_id: int,
+    payload: QuantityAdjustment,
+    current_user: UserRead = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> MaterialRead:
+    material = service.adjust_quantity(db, material_id, current_user.id, payload)
+    if material is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Material not found",
+        )
+    return material
+
+
+@router.post("/{material_id}/check-in", response_model=MaterialRead)
+def check_in_material(
+    material_id: int,
+    payload: QuantityChange,
+    current_user: UserRead = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> MaterialRead:
+    material = service.check_in_material(db, material_id, current_user.id, payload)
+    if material is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Material not found",
+        )
+    return material
+
+
+@router.post("/{material_id}/check-out", response_model=MaterialRead)
+def check_out_material(
+    material_id: int,
+    payload: QuantityChange,
+    current_user: UserRead = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> MaterialRead:
+    material = service.check_out_material(db, material_id, current_user.id, payload)
+    if material is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Material not found or insufficient quantity",
+        )
+    return material
+
+
+@router.post("/{material_id}/move", response_model=MaterialRead)
+def move_material(
+    material_id: int,
+    payload: MaterialMove,
+    current_user: UserRead = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> MaterialRead:
+    material = service.move_material(db, material_id, current_user.id, payload)
+    if material is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Material not found or invalid location",
+        )
+    return material
