@@ -54,3 +54,33 @@ def test_restore_material_requires_auth() -> None:
     assert response.status_code == 401
 
 
+def test_list_locations_requires_auth() -> None:
+    client = TestClient(app)
+
+    response = client.get("/locations")
+
+    assert response.status_code == 401
+
+
+def test_get_location_requires_auth() -> None:
+    client = TestClient(app)
+
+    response = client.get("/locations/1")
+
+    assert response.status_code == 401
+
+
+def test_create_location_requires_auth() -> None:
+    client = TestClient(app)
+
+    response = client.post("/locations", json={})
+
+    assert response.status_code == 401
+
+
+def test_update_location_requires_auth() -> None:
+    client = TestClient(app)
+
+    response = client.patch("/locations/1", json={})
+
+    assert response.status_code == 401

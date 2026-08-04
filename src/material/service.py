@@ -2,6 +2,18 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from src.material.schemas import MaterialCreate, MaterialRead, MaterialUpdate
 
+
+def _location_exists(db: Session, location_id: int | None) -> bool:
+    if location_id is None:
+        return True
+
+    location = db.execute(
+        text("SELECT id FROM locations WHERE id = :location_id"),
+        {"location_id": location_id},
+    ).first()
+    return location is not None
+
+
 def list_materials(db: Session) -> list[MaterialRead]:
     rows = db.execute(
         text(
@@ -74,6 +86,9 @@ def get_material(db: Session, material_id: int) -> MaterialRead | None:
     return MaterialRead(**row)
 
 def create_material(db: Session, payload: MaterialCreate) -> MaterialRead | None:
+    if not _location_exists(db, payload.location_id):
+        return None
+
     existing_material = db.execute(
         text("SELECT id FROM materials WHERE material_code = :material_code"),
         {"material_code": payload.material_code},
@@ -141,26 +156,25 @@ def update_material(db: Session, material_id: int, payload: MaterialUpdate) -> M
 
     if existing_material is None:
         return None
-    updates = {}
+    if "location_id" in payload.model_fields_set and not _location_exists(db, payload.location_id):
+        return None
 
-    if payload.material_name is not None:
-        updates["material_name"] = payload.material_name
-    if payload.qc_status is not None:
-        updates["qc_status"] = payload.qc_status
-    if payload.material_type is not None:
-        updates["material_type"] = payload.material_type
-    if payload.description is not None:
-        updates["description"] = payload.description  
-    if payload.source is not None:
-        updates["source"] = payload.source
-    if payload.unit is not None:
-        updates["unit"] = payload.unit
-    if payload.minimum_quantity is not None:
-        updates["minimum_quantity"] = payload.minimum_quantity
-    if payload.storage_condition is not None:
-        updates["storage_condition"] = payload.storage_condition
-    if payload.location_id is not None:
-        updates["location_id"] = payload.location_id
+    updates = {}
+    editable_fields = {
+        "material_name",
+        "qc_status",
+        "material_type",
+        "description",
+        "source",
+        "unit",
+        "minimum_quantity",
+        "storage_condition",
+        "location_id",
+    }
+
+    for field in editable_fields:
+        if field in payload.model_fields_set:
+            updates[field] = getattr(payload, field)
 
     if not updates:
         return get_material(db, material_id)
@@ -232,6 +246,7 @@ def search_materials(
     material_type: str | None = None,
     qc_status: str | None = None,
     availability_status: str | None = None,
+    location_id: int | None = None,
     include_archived: bool = False,
 ) -> list[MaterialRead]:
     query = """
@@ -272,18 +287,20 @@ def search_materials(
     if availability_status:
         query += " AND availability_status = :availability_status"
 
+    if location_id is not None:
+        query += " AND location_id = :location_id"
+
     rows = db.execute(
         text(query),
         {
             "material_type": material_type,
             "qc_status": qc_status,
             "availability_status": availability_status,
+            "location_id": location_id,
         },
     ).mappings().all()
 
     return [MaterialRead(**row) for row in rows]
-
-
 
 
 

@@ -12,7 +12,7 @@ class MaterialCreate(BaseModel):
     minimum_quantity: int
     qc_status: str
     storage_condition: str
-    location_id: int
+    location_id: int | None = None
 
 class MaterialRead(BaseModel):
     id: int
@@ -47,4 +47,3 @@ class MaterialUpdate(BaseModel):
     storage_condition: str | None = None
     location_id: int | None = None
     
-

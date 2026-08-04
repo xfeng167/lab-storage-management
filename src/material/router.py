@@ -21,12 +21,13 @@ def search_materials(
     material_type: str | None = None,
     qc_status: str | None = None,
     availability_status: str | None = None,
+    location_id: int | None = None,
     include_archived: bool = False,
     current_user: UserRead = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[MaterialRead]:
     return service.search_materials(
-        db, material_type, qc_status, availability_status, include_archived
+        db, material_type, qc_status, availability_status, location_id, include_archived
     )
 
 @router.get("/{material_id}", response_model=MaterialRead)
@@ -100,5 +101,4 @@ def restore_material(
             detail="Material not found",
         )
     return {"message": "Material restored successfully"}    
-
 
