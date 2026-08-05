@@ -103,14 +103,16 @@ def adjust_quantity(
     material_id: int,
     user_id: int,
     payload: QuantityAdjustment,
-) -> MaterialRead | None:
+) -> tuple[MaterialRead | None, str | None]:
     row = db.execute(
-        text("SELECT quantity_available FROM materials WHERE id = :material_id"),
+        text("SELECT quantity_available, is_archived FROM materials WHERE id = :material_id"),
         {"material_id": material_id},
     ).mappings().first()
 
     if row is None:
-        return None
+        return None, "not_found"
+    if row["is_archived"]:
+        return None, "archived"
 
     before_quantity = row["quantity_available"]
     after_quantity = payload.quantity_available
@@ -135,7 +137,7 @@ def adjust_quantity(
     )
     db.commit()
 
-    return get_material(db, material_id)
+    return get_material(db, material_id), None
 
 
 def check_in_material(
@@ -143,14 +145,16 @@ def check_in_material(
     material_id: int,
     user_id: int,
     payload: QuantityChange,
-) -> MaterialRead | None:
+) -> tuple[MaterialRead | None, str | None]:
     row = db.execute(
-        text("SELECT quantity_available FROM materials WHERE id = :material_id"),
+        text("SELECT quantity_available, is_archived FROM materials WHERE id = :material_id"),
         {"material_id": material_id},
     ).mappings().first()
 
     if row is None:
-        return None
+        return None, "not_found"
+    if row["is_archived"]:
+        return None, "archived"
 
     before_quantity = row["quantity_available"]
     after_quantity = before_quantity + payload.quantity
@@ -175,7 +179,7 @@ def check_in_material(
     )
     db.commit()
 
-    return get_material(db, material_id)
+    return get_material(db, material_id), None
 
 
 def check_out_material(
@@ -183,19 +187,21 @@ def check_out_material(
     material_id: int,
     user_id: int,
     payload: QuantityChange,
-) -> MaterialRead | None:
+) -> tuple[MaterialRead | None, str | None]:
     row = db.execute(
-        text("SELECT quantity_available FROM materials WHERE id = :material_id"),
+        text("SELECT quantity_available, is_archived FROM materials WHERE id = :material_id"),
         {"material_id": material_id},
     ).mappings().first()
 
     if row is None:
-        return None
+        return None, "not_found"
+    if row["is_archived"]:
+        return None, "archived"
 
     before_quantity = row["quantity_available"]
     after_quantity = before_quantity - payload.quantity
     if after_quantity < 0:
-        return None
+        return None, "insufficient_quantity"
 
     db.execute(
         text(
@@ -218,7 +224,7 @@ def check_out_material(
     )
     db.commit()
 
-    return get_material(db, material_id)
+    return get_material(db, material_id), None
 
 
 def move_material(
@@ -226,17 +232,19 @@ def move_material(
     material_id: int,
     user_id: int,
     payload: MaterialMove,
-) -> MaterialRead | None:
+) -> tuple[MaterialRead | None, str | None]:
     if not _location_exists(db, payload.location_id):
-        return None
+        return None, "invalid_location"
 
     row = db.execute(
-        text("SELECT location_id FROM materials WHERE id = :material_id"),
+        text("SELECT location_id, is_archived FROM materials WHERE id = :material_id"),
         {"material_id": material_id},
     ).mappings().first()
 
     if row is None:
-        return None
+        return None, "not_found"
+    if row["is_archived"]:
+        return None, "archived"
 
     before_location_id = row["location_id"]
     after_location_id = payload.location_id
@@ -261,7 +269,7 @@ def move_material(
     )
     db.commit()
 
-    return get_material(db, material_id)
+    return get_material(db, material_id), None
 
 def get_material(db: Session, material_id: int) -> MaterialRead | None:
     row = db.execute(
@@ -516,6 +524,4 @@ def search_materials(
     ).mappings().all()
 
     return [MaterialRead(**row) for row in rows]
-
-
 

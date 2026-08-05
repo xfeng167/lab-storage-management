@@ -178,6 +178,12 @@ POST /materials/{material_id}/check-out
 POST /materials/{material_id}/move
 ```
 
+Audit module:
+
+```http
+GET /audit-logs
+```
+
 Location module:
 
 ```http
@@ -197,6 +203,14 @@ location_id
 include_archived
 ```
 
+Audit logs support these optional query parameters:
+
+```text
+user_id
+material_id
+operation_type
+```
+
 Protected endpoints use the authorization header:
 
 ```http
@@ -209,6 +223,7 @@ Authorization: Bearer <token>
 src/
   main.py              # Creates the FastAPI app and registers routers.
   auth/                # Token validation and reusable auth dependencies.
+  audit/               # Admin inventory audit log review endpoints.
   core/config.py       # Reads environment configuration.
   db/connection.py     # Creates the SQLAlchemy database session.
   health/router.py     # Minimal API health check.

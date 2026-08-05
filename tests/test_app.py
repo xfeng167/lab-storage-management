@@ -128,3 +128,11 @@ def test_move_material_requires_auth() -> None:
     )
 
     assert response.status_code == 401
+
+
+def test_audit_logs_requires_auth() -> None:
+    client = TestClient(app)
+
+    response = client.get("/audit-logs")
+
+    assert response.status_code == 401

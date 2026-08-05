@@ -16,6 +16,33 @@ from src.user.schemas import UserRead
 
 router = APIRouter()
 
+
+def _raise_inventory_error(error: str | None) -> None:
+    if error == "not_found":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Material not found",
+        )
+    if error == "archived":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Archived material cannot be changed",
+        )
+    if error == "insufficient_quantity":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Insufficient quantity available",
+        )
+    if error == "invalid_location":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid location",
+        )
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Inventory operation failed",
+    )
+
 @router.get("", response_model=list[MaterialRead])
 def list_materials(
     current_user: UserRead = Depends(get_current_user),
@@ -117,12 +144,9 @@ def adjust_quantity(
     current_user: UserRead = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> MaterialRead:
-    material = service.adjust_quantity(db, material_id, current_user.id, payload)
+    material, error = service.adjust_quantity(db, material_id, current_user.id, payload)
     if material is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Material not found",
-        )
+        _raise_inventory_error(error)
     return material
 
 
@@ -133,12 +157,9 @@ def check_in_material(
     current_user: UserRead = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> MaterialRead:
-    material = service.check_in_material(db, material_id, current_user.id, payload)
+    material, error = service.check_in_material(db, material_id, current_user.id, payload)
     if material is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Material not found",
-        )
+        _raise_inventory_error(error)
     return material
 
 
@@ -149,12 +170,9 @@ def check_out_material(
     current_user: UserRead = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> MaterialRead:
-    material = service.check_out_material(db, material_id, current_user.id, payload)
+    material, error = service.check_out_material(db, material_id, current_user.id, payload)
     if material is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Material not found or insufficient quantity",
-        )
+        _raise_inventory_error(error)
     return material
 
 
@@ -165,10 +183,7 @@ def move_material(
     current_user: UserRead = Depends(require_admin_user),
     db: Session = Depends(get_db),
 ) -> MaterialRead:
-    material = service.move_material(db, material_id, current_user.id, payload)
+    material, error = service.move_material(db, material_id, current_user.id, payload)
     if material is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Material not found or invalid location",
-        )
+        _raise_inventory_error(error)
     return material

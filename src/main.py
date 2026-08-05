@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from src.audit.router import router as audit_router
 from src.core.config import settings
 from src.health.router import router as health_router
 from src.location.router import router as location_router
@@ -18,6 +19,7 @@ def create_app() -> FastAPI:
     app.include_router(user_router, prefix="/users", tags=["users"])
     app.include_router(material_router, prefix="/materials", tags=["materials"])
     app.include_router(location_router, prefix="/locations", tags=["locations"])
+    app.include_router(audit_router, tags=["audit"])
     return app
 
 app = create_app()

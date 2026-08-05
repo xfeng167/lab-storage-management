@@ -8,9 +8,9 @@ class MaterialCreate(BaseModel):
     material_type: str
     description: str
     source: str
-    quantity_available: int
+    quantity_available: int = Field(ge=0)
     unit: str
-    minimum_quantity: int
+    minimum_quantity: int = Field(ge=0)
     qc_status: str
     storage_condition: str
     location_id: int | None = None
@@ -43,7 +43,7 @@ class MaterialUpdate(BaseModel):
     description: str | None = None
     source: str | None = None
     unit: str | None = None
-    minimum_quantity: int | None = None
+    minimum_quantity: int | None = Field(default=None, ge=0)
     qc_status: str | None = None
     storage_condition: str | None = None
     location_id: int | None = None
