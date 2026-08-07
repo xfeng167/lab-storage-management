@@ -105,7 +105,13 @@ def adjust_quantity(
     payload: QuantityAdjustment,
 ) -> tuple[MaterialRead | None, str | None]:
     row = db.execute(
-        text("SELECT quantity_available, is_archived FROM materials WHERE id = :material_id"),
+        text(
+            """
+            SELECT quantity_available, quantity_reserved, is_archived
+            FROM materials
+            WHERE id = :material_id
+            """
+        ),
         {"material_id": material_id},
     ).mappings().first()
 
@@ -116,6 +122,9 @@ def adjust_quantity(
 
     before_quantity = row["quantity_available"]
     after_quantity = payload.quantity_available
+    if after_quantity < row["quantity_reserved"]:
+        return None, "insufficient_quantity"
+
     db.execute(
         text(
             """
@@ -147,7 +156,13 @@ def check_in_material(
     payload: QuantityChange,
 ) -> tuple[MaterialRead | None, str | None]:
     row = db.execute(
-        text("SELECT quantity_available, is_archived FROM materials WHERE id = :material_id"),
+        text(
+            """
+            SELECT quantity_available, quantity_reserved, is_archived
+            FROM materials
+            WHERE id = :material_id
+            """
+        ),
         {"material_id": material_id},
     ).mappings().first()
 
@@ -200,7 +215,7 @@ def check_out_material(
 
     before_quantity = row["quantity_available"]
     after_quantity = before_quantity - payload.quantity
-    if after_quantity < 0:
+    if after_quantity < row["quantity_reserved"]:
         return None, "insufficient_quantity"
 
     db.execute(
@@ -524,4 +539,3 @@ def search_materials(
     ).mappings().all()
 
     return [MaterialRead(**row) for row in rows]
-

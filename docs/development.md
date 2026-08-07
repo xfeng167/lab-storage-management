@@ -123,6 +123,28 @@ CREATE TABLE IF NOT EXISTS inventory_audit_logs (
 );
 ```
 
+Create the first orders table:
+
+```sql
+CREATE TABLE IF NOT EXISTS orders (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    requested_by_user_id INT NOT NULL,
+    material_id INT NOT NULL,
+    requested_quantity INT NOT NULL,
+    reserved_quantity INT NOT NULL DEFAULT 0,
+    status VARCHAR(40) NOT NULL DEFAULT 'submitted',
+    request_notes TEXT,
+    reviewed_by_user_id INT NULL,
+    reviewed_at TIMESTAMP NULL,
+    outcome_notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (requested_by_user_id) REFERENCES users(id),
+    FOREIGN KEY (material_id) REFERENCES materials(id),
+    FOREIGN KEY (reviewed_by_user_id) REFERENCES users(id)
+);
+```
+
 ## 4. Run the API
 
 ```bash
@@ -193,6 +215,27 @@ POST /locations
 PATCH /locations/{location_id}
 ```
 
+Order module:
+
+```http
+GET /orders
+GET /orders/{order_id}
+POST /orders
+POST /orders/{order_id}/approve
+POST /orders/{order_id}/reject
+POST /orders/{order_id}/fulfill
+POST /orders/{order_id}/cancel
+```
+
+Report module:
+
+```http
+GET /reports/low-stock
+GET /reports/pending-orders
+GET /reports/recent-inventory-activity
+GET /reports/materials-by-location
+```
+
 Material search supports these optional query parameters:
 
 ```text
@@ -229,6 +272,8 @@ src/
   health/router.py     # Minimal API health check.
   location/            # Storage location CRUD endpoints.
   material/            # Material CRUD, search, archive, and restore endpoints.
+  order/               # Material request, approval, fulfillment, and cancellation endpoints.
+  report/              # Dashboard-style inventory and order report endpoints.
   test_table/          # Example CRUD module for the existing test_table.
   user/                # User registration, login, logout, and profile endpoints.
   utils/security.py    # Password hashing and token helper functions.

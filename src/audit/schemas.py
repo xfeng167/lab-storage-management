@@ -1,7 +1,5 @@
 from datetime import datetime
-
 from pydantic import BaseModel
-
 
 class InventoryAuditLogRead(BaseModel):
     id: int

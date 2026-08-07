@@ -1,8 +1,6 @@
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-
 from src.location.schemas import LocationCreate, LocationRead, LocationUpdate
-
 
 LOCATION_SELECT = """
     SELECT
@@ -16,7 +14,6 @@ LOCATION_SELECT = """
         updated_at
     FROM locations
 """
-
 
 def _parent_location_is_valid(
     db: Session,

@@ -1,8 +1,6 @@
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-
 from src.audit.schemas import InventoryAuditLogRead
-
 
 def list_inventory_audit_logs(
     db: Session,

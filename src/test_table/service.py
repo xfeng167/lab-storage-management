@@ -1,6 +1,5 @@
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-
 from src.test_table.schemas import TestTableCreate, TestTableRead, TestTableUpdate
 
 
