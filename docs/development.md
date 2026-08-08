@@ -157,7 +157,17 @@ Open the API docs:
 http://127.0.0.1:8000/docs
 ```
 
-## 5. Try the First Endpoints
+## 5. Run Tests
+
+```bash
+uv run pytest
+```
+
+The test suite uses a separate MySQL database named `lab_storage_test_db`.
+Pytest creates the database and tables automatically, then clears the test tables before each test.
+This keeps automated tests from changing your normal local development database, `lab_storage_db`.
+
+## 6. Try the First Endpoints
 
 Health check:
 

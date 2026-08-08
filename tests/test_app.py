@@ -1,6 +1,5 @@
 from fastapi.testclient import TestClient
 from sqlalchemy import text
-from uuid import uuid4
 
 from src.db.connection import SessionLocal
 from src.main import app
@@ -100,57 +99,6 @@ def create_test_admin(username: str, email: str, password: str) -> None:
                 "password_hash": hash_password(password),
                 "role": ROLE_ADMIN,
             },
-        )
-        db.commit()
-    finally:
-        db.close()
-
-
-def clean_up_test_location(name: str) -> None:
-    db = SessionLocal()
-    try:
-        db.execute(
-            text(
-                """
-                DELETE FROM orders
-                WHERE material_id IN (
-                    SELECT materials.id
-                    FROM materials
-                    JOIN locations ON locations.id = materials.location_id
-                    WHERE locations.name = :name
-                )
-                """
-            ),
-            {"name": name},
-        )
-        db.execute(
-            text(
-                """
-                DELETE FROM inventory_audit_logs
-                WHERE material_id IN (
-                    SELECT materials.id
-                    FROM materials
-                    JOIN locations ON locations.id = materials.location_id
-                    WHERE locations.name = :name
-                )
-                """
-            ),
-            {"name": name},
-        )
-        db.execute(
-            text(
-                """
-                DELETE FROM materials
-                WHERE location_id IN (
-                    SELECT id FROM locations WHERE name = :name
-                )
-                """
-            ),
-            {"name": name},
-        )
-        db.execute(
-            text("DELETE FROM locations WHERE name = :name"),
-            {"name": name},
         )
         db.commit()
     finally:
@@ -959,11 +907,10 @@ def test_materials_by_location_report_groups_material_inventory() -> None:
     password = "password123"
     first_material_code = "TEST-MATERIALS-BY-LOCATION-001"
     second_material_code = "TEST-MATERIALS-BY-LOCATION-002"
-    location_name = f"Report Freezer A {uuid4().hex}"
+    location_name = "Report Freezer A"
 
     clean_up_order_workflow_test_data(username, email, first_material_code)
     clean_up_order_workflow_test_data(username, email, second_material_code)
-    clean_up_test_location(location_name)
     create_test_admin(username, email, password)
 
     headers = login_test_user(client, username, password)
@@ -1006,6 +953,6 @@ def test_materials_by_location_report_groups_material_inventory() -> None:
     assert len(matching_locations) == 1
     location_report = matching_locations[0]
     assert location_report["location_name"] == location_name
-    assert location_report["material_count"] >= 2
-    assert location_report["total_quantity_available"] >= 10
-    assert location_report["total_quantity_reserved"] >= 0
+    assert location_report["material_count"] == 2
+    assert location_report["total_quantity_available"] == 10
+    assert location_report["total_quantity_reserved"] == 0
