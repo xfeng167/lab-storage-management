@@ -38,4 +38,33 @@ describe('API client', () => {
 
     await expect(api.login({ username: 'lina', password: 'wrong' })).rejects.toEqual(expect.objectContaining({ status: 401, message: 'Invalid username or password' }))
   })
+
+  it('serializes material search filters and inventory operations', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(response({ id: 2 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.searchMaterials('stored-token', { qc_status: 'pending', location_id: 4, include_archived: true })
+    await api.checkInMaterial('stored-token', 2, 5, 'Received shipment')
+
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/materials/search?qc_status=pending&location_id=4&include_archived=true')
+    expect(fetchMock.mock.calls[0][1].headers).toEqual(expect.objectContaining({ Authorization: 'Bearer stored-token' }))
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/materials/2/check-in')
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({ quantity: 5, reason: 'Received shipment' })
+  })
+
+  it('uses request review and audit filter endpoints', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response({ id: 3, status: 'approved' }))
+      .mockResolvedValueOnce(response([]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.approveOrder('admin-token', 3, 'Approved for use')
+    await api.listAuditLogs('admin-token', { user_id: 1, operation_type: 'check_in' })
+
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/orders/3/approve')
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string)).toEqual({ outcome_notes: 'Approved for use' })
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/audit-logs?user_id=1&operation_type=check_in')
+  })
 })

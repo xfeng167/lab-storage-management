@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { canManageOperations, isAdmin } from '../types'
 import { LoadingState } from '../components/LoadingState'
 import { SessionUnavailable } from '../components/SessionUnavailable'
 
@@ -22,7 +23,12 @@ export function PublicOnlyRoute() {
 
 export function AdminRoute() {
   const { user } = useAuth()
-  return user?.role === 'admin' ? <Outlet /> : <PermissionDenied />
+  return isAdmin(user) ? <Outlet /> : <PermissionDenied />
+}
+
+export function StaffRoute() {
+  const { user } = useAuth()
+  return canManageOperations(user) ? <Outlet /> : <PermissionDenied />
 }
 
 export function PermissionDenied() {

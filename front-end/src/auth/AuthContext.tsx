@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { ApiError, api } from '../api/client'
+import { ApiError, api, setUnauthorizedHandler } from '../api/client'
 import type { LoginPayload, RegisterPayload, User } from '../types'
 import { clearToken, readToken, saveToken } from './storage'
 
@@ -28,6 +28,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const expireSession = useCallback(() => {
+    clearToken()
+    setToken(null)
+    setUser(null)
+    setStatus('anonymous')
+    setError('Your session has expired. Please sign in again.')
+  }, [])
+
+  useEffect(() => {
+    setUnauthorizedHandler(expireSession)
+    return () => setUnauthorizedHandler(undefined)
+  }, [expireSession])
+
   const restoreSession = useCallback(async () => {
     const storedToken = readToken()
     if (!storedToken) {
@@ -47,11 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus('authenticated')
     } catch (caughtError) {
       if (caughtError instanceof ApiError && caughtError.status === 401) {
-        clearToken()
-        setToken(null)
-        setUser(null)
-        setStatus('anonymous')
-        setError('Your session has expired. Please sign in again.')
+        expireSession()
         return
       }
 
@@ -60,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus('unavailable')
       setError(getMessage(caughtError))
     }
-  }, [])
+  }, [expireSession])
 
   useEffect(() => {
     void restoreSession()
@@ -85,6 +94,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (currentToken) {
         await api.logout(currentToken)
       }
+    } catch {
+      return
     } finally {
       clearToken()
       setToken(null)

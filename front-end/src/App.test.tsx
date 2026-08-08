@@ -70,4 +70,13 @@ describe('application routes', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Sign in to your account' })).toBeInTheDocument())
     expect(window.localStorage.getItem('lab-storage-management.auth-token')).toBeNull()
   })
+
+  it('blocks viewers from staff-only routes', async () => {
+    window.localStorage.setItem('lab-storage-management.auth-token', 'viewer-token')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json(viewer)))
+
+    renderApp('/reports')
+
+    expect(await screen.findByRole('heading', { name: 'You do not have permission to view this page.' })).toBeInTheDocument()
+  })
 })
