@@ -105,6 +105,25 @@ def create_test_admin(username: str, email: str, password: str) -> None:
         db.close()
 
 
+def create_test_viewer(
+    client: TestClient,
+    username: str,
+    email: str,
+    password: str,
+) -> dict:
+    response = client.post(
+        "/users/register",
+        json={
+            "username": username,
+            "email": email,
+            "password": password,
+        },
+    )
+
+    assert response.status_code == 201
+    return response.json()
+
+
 def login_test_user(client: TestClient, username: str, password: str) -> dict[str, str]:
     login_response = client.post(
         "/users/login",
@@ -744,6 +763,188 @@ def test_user_cannot_view_another_users_order() -> None:
 
     assert requester_get_response.status_code == 200
     assert other_get_response.status_code == 404
+
+
+def test_admin_can_filter_orders_by_status() -> None:
+    client = TestClient(app)
+
+    username = "order_status_filter_admin"
+    email = "order_status_filter_admin@example.com"
+    password = "password123"
+    submitted_material_code = "TEST-ORDER-STATUS-SUBMITTED-001"
+    approved_material_code = "TEST-ORDER-STATUS-APPROVED-001"
+
+    clean_up_order_workflow_test_data(username, email, submitted_material_code)
+    clean_up_order_workflow_test_data(username, email, approved_material_code)
+    create_test_admin(username, email, password)
+
+    headers = login_test_user(client, username, password)
+    submitted_material = create_test_material(
+        client,
+        headers,
+        submitted_material_code,
+        "Order Status Filter Submitted Material",
+        10,
+    )
+    approved_material = create_test_material(
+        client,
+        headers,
+        approved_material_code,
+        "Order Status Filter Approved Material",
+        10,
+    )
+    submitted_order = create_test_order(
+        client,
+        headers,
+        submitted_material["id"],
+        request_notes="Submitted filter test",
+    )
+    approved_order = create_test_order(
+        client,
+        headers,
+        approved_material["id"],
+        request_notes="Approved filter test",
+    )
+
+    approve_response = client.post(
+        f"/orders/{approved_order['id']}/approve",
+        headers=headers,
+    )
+
+    assert approve_response.status_code == 200
+
+    filtered_response = client.get(
+        "/orders",
+        params={"status": "submitted"},
+        headers=headers,
+    )
+
+    assert filtered_response.status_code == 200
+    filtered_order_ids = {order["id"] for order in filtered_response.json()}
+    assert submitted_order["id"] in filtered_order_ids
+    assert approved_order["id"] not in filtered_order_ids
+
+
+def test_admin_can_filter_orders_by_material_id() -> None:
+    client = TestClient(app)
+
+    username = "order_material_filter_admin"
+    email = "order_material_filter_admin@example.com"
+    password = "password123"
+    first_material_code = "TEST-ORDER-MATERIAL-FILTER-001"
+    second_material_code = "TEST-ORDER-MATERIAL-FILTER-002"
+
+    clean_up_order_workflow_test_data(username, email, first_material_code)
+    clean_up_order_workflow_test_data(username, email, second_material_code)
+    create_test_admin(username, email, password)
+
+    headers = login_test_user(client, username, password)
+    first_material = create_test_material(
+        client,
+        headers,
+        first_material_code,
+        "Order Material Filter One",
+        10,
+    )
+    second_material = create_test_material(
+        client,
+        headers,
+        second_material_code,
+        "Order Material Filter Two",
+        10,
+    )
+    first_order = create_test_order(
+        client,
+        headers,
+        first_material["id"],
+        request_notes="First material filter test",
+    )
+    second_order = create_test_order(
+        client,
+        headers,
+        second_material["id"],
+        request_notes="Second material filter test",
+    )
+
+    filtered_response = client.get(
+        "/orders",
+        params={"material_id": first_material["id"]},
+        headers=headers,
+    )
+
+    assert filtered_response.status_code == 200
+    filtered_order_ids = {order["id"] for order in filtered_response.json()}
+    assert first_order["id"] in filtered_order_ids
+    assert second_order["id"] not in filtered_order_ids
+
+
+def test_user_cannot_filter_into_another_users_orders() -> None:
+    client = TestClient(app)
+
+    admin_username = "order_user_filter_admin"
+    admin_email = "order_user_filter_admin@example.com"
+    requester_username = "order_filter_requester_user"
+    requester_email = "order_filter_requester_user@example.com"
+    other_username = "order_filter_other_user"
+    other_email = "order_filter_other_user@example.com"
+    password = "password123"
+    material_code = "TEST-ORDER-USER-FILTER-001"
+
+    clean_up_order_workflow_test_data(admin_username, admin_email, material_code)
+    clean_up_order_workflow_test_data(requester_username, requester_email, material_code)
+    clean_up_order_workflow_test_data(other_username, other_email, material_code)
+    create_test_admin(admin_username, admin_email, password)
+    requester = create_test_viewer(
+        client,
+        requester_username,
+        requester_email,
+        password,
+    )
+    other_user = create_test_viewer(
+        client,
+        other_username,
+        other_email,
+        password,
+    )
+
+    admin_headers = login_test_user(client, admin_username, password)
+    requester_headers = login_test_user(client, requester_username, password)
+    other_headers = login_test_user(client, other_username, password)
+
+    material = create_test_material(
+        client,
+        admin_headers,
+        material_code,
+        "Order User Filter Test Material",
+        10,
+    )
+    requester_order = create_test_order(
+        client,
+        requester_headers,
+        material["id"],
+        request_notes="Requester order filter test",
+    )
+    other_order = create_test_order(
+        client,
+        other_headers,
+        material["id"],
+        request_notes="Other user order filter test",
+    )
+
+    filtered_response = client.get(
+        "/orders",
+        params={"requested_by_user_id": other_user["id"]},
+        headers=requester_headers,
+    )
+
+    assert filtered_response.status_code == 200
+    filtered_order_ids = {order["id"] for order in filtered_response.json()}
+    assert requester_order["id"] in filtered_order_ids
+    assert other_order["id"] not in filtered_order_ids
+    assert all(
+        order["requested_by_user_id"] == requester["id"]
+        for order in filtered_response.json()
+    )
 
 
 def test_low_stock_report_includes_material_at_or_below_minimum() -> None:

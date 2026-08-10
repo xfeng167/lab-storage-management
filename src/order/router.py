@@ -51,10 +51,19 @@ def create_order(
 
 @router.get("", response_model=list[OrderRead])
 def list_orders(
+    status: str | None = None,
+    material_id: int | None = None,
+    requested_by_user_id: int | None = None,
     current_user: UserRead = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[OrderRead]:
-    return service.list_orders(db, current_user)
+    return service.list_orders(
+        db,
+        current_user,
+        status=status,
+        material_id=material_id,
+        requested_by_user_id=requested_by_user_id,
+    )
 
 
 @router.get("/{order_id}", response_model=OrderRead)

@@ -111,7 +111,13 @@ def create_order(
     return get_order(db, order_id, current_user), None
 
 
-def list_orders(db: Session, current_user: UserRead) -> list[OrderRead]:
+def list_orders(
+    db: Session,
+    current_user: UserRead,
+    status: str | None = None,
+    material_id: int | None = None,
+    requested_by_user_id: int | None = None,
+) -> list[OrderRead]:
     query = """
         SELECT
             id,
@@ -128,11 +134,26 @@ def list_orders(db: Session, current_user: UserRead) -> list[OrderRead]:
             updated_at
         FROM orders
     """
+    conditions = []
     params = {}
 
     if current_user.role != ROLE_ADMIN:
-        query += " WHERE requested_by_user_id = :user_id"
-        params["user_id"] = current_user.id
+        conditions.append("requested_by_user_id = :current_user_id")
+        params["current_user_id"] = current_user.id
+    elif requested_by_user_id is not None:
+        conditions.append("requested_by_user_id = :requested_by_user_id")
+        params["requested_by_user_id"] = requested_by_user_id
+
+    if status is not None:
+        conditions.append("status = :status")
+        params["status"] = status
+
+    if material_id is not None:
+        conditions.append("material_id = :material_id")
+        params["material_id"] = material_id
+
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
 
     query += " ORDER BY id DESC"
     rows = db.execute(text(query), params).mappings().all()

@@ -237,6 +237,14 @@ POST /orders/{order_id}/fulfill
 POST /orders/{order_id}/cancel
 ```
 
+Order list supports these optional query parameters:
+
+```text
+status
+material_id
+requested_by_user_id
+```
+
 Report module:
 
 ```http
