@@ -481,10 +481,13 @@ def restore_material(db: Session, material_id: int) -> bool:
 
 def search_materials(
     db: Session,
+    keyword: str | None = None,
     material_type: str | None = None,
+    source: str | None = None,
     qc_status: str | None = None,
     availability_status: str | None = None,
     location_id: int | None = None,
+    low_stock: bool = False,
     include_archived: bool = False,
 ) -> list[MaterialRead]:
     query = """
@@ -512,30 +515,46 @@ def search_materials(
         FROM materials
         WHERE 1=1
     """
+    params = {}
 
     if not include_archived:
         query += " AND is_archived = FALSE"
 
+    if keyword:
+        query += """
+            AND (
+                material_code LIKE :keyword
+                OR material_name LIKE :keyword
+                OR description LIKE :keyword
+            )
+        """
+        params["keyword"] = f"%{keyword}%"
+
     if material_type:
         query += " AND material_type = :material_type"
+        params["material_type"] = material_type
+
+    if source:
+        query += " AND source = :source"
+        params["source"] = source
 
     if qc_status:
         query += " AND qc_status = :qc_status"
+        params["qc_status"] = qc_status
 
     if availability_status:
         query += " AND availability_status = :availability_status"
+        params["availability_status"] = availability_status
 
     if location_id is not None:
         query += " AND location_id = :location_id"
+        params["location_id"] = location_id
 
-    rows = db.execute(
-        text(query),
-        {
-            "material_type": material_type,
-            "qc_status": qc_status,
-            "availability_status": availability_status,
-            "location_id": location_id,
-        },
-    ).mappings().all()
+    if low_stock:
+        query += " AND quantity_available <= minimum_quantity"
+
+    query += " ORDER BY id"
+
+    rows = db.execute(text(query), params).mappings().all()
 
     return [MaterialRead(**row) for row in rows]

@@ -33,10 +33,20 @@ def list_pending_orders(
 
 @router.get("/recent-inventory-activity", response_model=list[RecentInventoryActivityRead])
 def list_recent_inventory_activity(
+    user_id: int | None = None,
+    material_id: int | None = None,
+    operation_type: str | None = None,
+    limit: int = 20,
     current_user: UserRead = Depends(require_staff_user),
     db: Session = Depends(get_db),
 ) -> list[RecentInventoryActivityRead]:
-    return service.list_recent_inventory_activity(db)
+    return service.list_recent_inventory_activity(
+        db,
+        user_id=user_id,
+        material_id=material_id,
+        operation_type=operation_type,
+        limit=limit,
+    )
 
 
 @router.get("/materials-by-location", response_model=list[MaterialsByLocationRead])

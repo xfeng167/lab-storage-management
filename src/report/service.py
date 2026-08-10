@@ -60,10 +60,14 @@ def list_pending_orders(db: Session) -> list[PendingOrderRead]:
     return [PendingOrderRead(**row) for row in rows]
 
 
-def list_recent_inventory_activity(db: Session) -> list[RecentInventoryActivityRead]:
-    rows = db.execute(
-        text(
-            """
+def list_recent_inventory_activity(
+    db: Session,
+    user_id: int | None = None,
+    material_id: int | None = None,
+    operation_type: str | None = None,
+    limit: int = 20,
+) -> list[RecentInventoryActivityRead]:
+    query = """
             SELECT
                 inventory_audit_logs.id,
                 inventory_audit_logs.user_id,
@@ -79,11 +83,28 @@ def list_recent_inventory_activity(db: Session) -> list[RecentInventoryActivityR
             FROM inventory_audit_logs
             JOIN users ON users.id = inventory_audit_logs.user_id
             JOIN materials ON materials.id = inventory_audit_logs.material_id
+            WHERE 1=1
+    """
+    params = {"limit": max(1, min(limit, 100))}
+
+    if user_id is not None:
+        query += " AND inventory_audit_logs.user_id = :user_id"
+        params["user_id"] = user_id
+
+    if material_id is not None:
+        query += " AND inventory_audit_logs.material_id = :material_id"
+        params["material_id"] = material_id
+
+    if operation_type is not None:
+        query += " AND inventory_audit_logs.operation_type = :operation_type"
+        params["operation_type"] = operation_type
+
+    query += """
             ORDER BY inventory_audit_logs.created_at DESC, inventory_audit_logs.id DESC
-            LIMIT 20
-            """
-        )
-    ).mappings().all()
+            LIMIT :limit
+    """
+
+    rows = db.execute(text(query), params).mappings().all()
 
     return [RecentInventoryActivityRead(**row) for row in rows]
 

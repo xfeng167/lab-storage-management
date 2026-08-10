@@ -54,6 +54,7 @@ def list_orders(
     status: str | None = None,
     material_id: int | None = None,
     requested_by_user_id: int | None = None,
+    reviewed_by_user_id: int | None = None,
     current_user: UserRead = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[OrderRead]:
@@ -63,6 +64,7 @@ def list_orders(
         status=status,
         material_id=material_id,
         requested_by_user_id=requested_by_user_id,
+        reviewed_by_user_id=reviewed_by_user_id,
     )
 
 

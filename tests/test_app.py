@@ -878,6 +878,67 @@ def test_admin_can_filter_orders_by_material_id() -> None:
     assert second_order["id"] not in filtered_order_ids
 
 
+def test_admin_can_filter_orders_by_reviewer() -> None:
+    client = TestClient(app)
+
+    username = "order_reviewer_filter_admin"
+    email = "order_reviewer_filter_admin@example.com"
+    password = "password123"
+    reviewed_material_code = "TEST-ORDER-REVIEWER-FILTER-001"
+    unreviewed_material_code = "TEST-ORDER-REVIEWER-FILTER-002"
+
+    clean_up_order_workflow_test_data(username, email, reviewed_material_code)
+    clean_up_order_workflow_test_data(username, email, unreviewed_material_code)
+    create_test_admin(username, email, password)
+
+    headers = login_test_user(client, username, password)
+    reviewed_material = create_test_material(
+        client,
+        headers,
+        reviewed_material_code,
+        "Order Reviewer Filter Reviewed Material",
+        10,
+    )
+    unreviewed_material = create_test_material(
+        client,
+        headers,
+        unreviewed_material_code,
+        "Order Reviewer Filter Unreviewed Material",
+        10,
+    )
+    reviewed_order = create_test_order(
+        client,
+        headers,
+        reviewed_material["id"],
+        request_notes="Reviewed order filter test",
+    )
+    unreviewed_order = create_test_order(
+        client,
+        headers,
+        unreviewed_material["id"],
+        request_notes="Unreviewed order filter test",
+    )
+
+    approve_response = client.post(
+        f"/orders/{reviewed_order['id']}/approve",
+        headers=headers,
+    )
+
+    assert approve_response.status_code == 200
+    reviewed_by_user_id = approve_response.json()["reviewed_by_user_id"]
+
+    filtered_response = client.get(
+        "/orders",
+        params={"reviewed_by_user_id": reviewed_by_user_id},
+        headers=headers,
+    )
+
+    assert filtered_response.status_code == 200
+    filtered_order_ids = {order["id"] for order in filtered_response.json()}
+    assert reviewed_order["id"] in filtered_order_ids
+    assert unreviewed_order["id"] not in filtered_order_ids
+
+
 def test_user_cannot_filter_into_another_users_orders() -> None:
     client = TestClient(app)
 
@@ -945,6 +1006,76 @@ def test_user_cannot_filter_into_another_users_orders() -> None:
         order["requested_by_user_id"] == requester["id"]
         for order in filtered_response.json()
     )
+
+
+def test_material_search_supports_keyword_source_and_low_stock_filters() -> None:
+    client = TestClient(app)
+
+    username = "material_filter_admin"
+    email = "material_filter_admin@example.com"
+    password = "password123"
+    low_stock_material_code = "TEST-MATERIAL-FILTER-LOW-001"
+    enough_stock_material_code = "TEST-MATERIAL-FILTER-ENOUGH-001"
+
+    clean_up_order_workflow_test_data(username, email, low_stock_material_code)
+    clean_up_order_workflow_test_data(username, email, enough_stock_material_code)
+    create_test_admin(username, email, password)
+
+    headers = login_test_user(client, username, password)
+    low_stock_material = create_test_material(
+        client,
+        headers,
+        low_stock_material_code,
+        "Special Buffer Filter Material",
+        1,
+    )
+    enough_stock_material = create_test_material(
+        client,
+        headers,
+        enough_stock_material_code,
+        "Regular Solvent Filter Material",
+        10,
+    )
+
+    keyword_response = client.get(
+        "/materials/search",
+        params={"keyword": "Special Buffer"},
+        headers=headers,
+    )
+    source_response = client.get(
+        "/materials/search",
+        params={"source": "test"},
+        headers=headers,
+    )
+    low_stock_response = client.get(
+        "/materials/search",
+        params={"low_stock": True},
+        headers=headers,
+    )
+
+    assert keyword_response.status_code == 200
+    keyword_material_codes = {
+        material["material_code"]
+        for material in keyword_response.json()
+    }
+    assert low_stock_material["material_code"] in keyword_material_codes
+    assert enough_stock_material["material_code"] not in keyword_material_codes
+
+    assert source_response.status_code == 200
+    source_material_codes = {
+        material["material_code"]
+        for material in source_response.json()
+    }
+    assert low_stock_material["material_code"] in source_material_codes
+    assert enough_stock_material["material_code"] in source_material_codes
+
+    assert low_stock_response.status_code == 200
+    low_stock_material_codes = {
+        material["material_code"]
+        for material in low_stock_response.json()
+    }
+    assert low_stock_material["material_code"] in low_stock_material_codes
+    assert enough_stock_material["material_code"] not in low_stock_material_codes
 
 
 def test_low_stock_report_includes_material_at_or_below_minimum() -> None:
@@ -1098,6 +1229,77 @@ def test_recent_inventory_activity_report_includes_inventory_audit_details() -> 
     assert activity["before_value"] in {"10", "10.00"}
     assert activity["after_value"] in {"7", "7.00"}
     assert activity["reason"] == "recent activity report test"
+
+
+def test_recent_inventory_activity_report_supports_filters() -> None:
+    client = TestClient(app)
+
+    username = "recent_activity_filter_admin"
+    email = "recent_activity_filter_admin@example.com"
+    password = "password123"
+    adjusted_material_code = "TEST-RECENT-ACTIVITY-FILTER-001"
+    moved_material_code = "TEST-RECENT-ACTIVITY-FILTER-002"
+
+    clean_up_order_workflow_test_data(username, email, adjusted_material_code)
+    clean_up_order_workflow_test_data(username, email, moved_material_code)
+    create_test_admin(username, email, password)
+
+    headers = login_test_user(client, username, password)
+    adjusted_material = create_test_material(
+        client,
+        headers,
+        adjusted_material_code,
+        "Recent Activity Filter Adjusted Material",
+        10,
+    )
+    moved_material = create_test_material(
+        client,
+        headers,
+        moved_material_code,
+        "Recent Activity Filter Moved Material",
+        10,
+    )
+    location = create_test_location(
+        client,
+        headers,
+        "Recent Activity Filter Location",
+    )
+
+    adjust_response = client.post(
+        f"/materials/{adjusted_material['id']}/adjust-quantity",
+        json={
+            "quantity_available": 7,
+            "reason": "recent activity filter adjust test",
+        },
+        headers=headers,
+    )
+    move_response = client.post(
+        f"/materials/{moved_material['id']}/move",
+        json={
+            "location_id": location["id"],
+            "reason": "recent activity filter move test",
+        },
+        headers=headers,
+    )
+
+    assert adjust_response.status_code == 200
+    assert move_response.status_code == 200
+
+    filtered_response = client.get(
+        "/reports/recent-inventory-activity",
+        params={
+            "material_id": adjusted_material["id"],
+            "operation_type": "adjust_quantity",
+            "limit": 1,
+        },
+        headers=headers,
+    )
+
+    assert filtered_response.status_code == 200
+    activities = filtered_response.json()
+    assert len(activities) == 1
+    assert activities[0]["material_code"] == adjusted_material_code
+    assert activities[0]["operation_type"] == "adjust_quantity"
 
 
 def test_materials_by_location_report_groups_material_inventory() -> None:

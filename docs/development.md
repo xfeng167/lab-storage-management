@@ -243,6 +243,7 @@ Order list supports these optional query parameters:
 status
 material_id
 requested_by_user_id
+reviewed_by_user_id
 ```
 
 Report module:
@@ -257,11 +258,23 @@ GET /reports/materials-by-location
 Material search supports these optional query parameters:
 
 ```text
+keyword
 material_type
+source
 qc_status
 availability_status
 location_id
+low_stock
 include_archived
+```
+
+Recent inventory activity report supports these optional query parameters:
+
+```text
+user_id
+material_id
+operation_type
+limit
 ```
 
 Audit logs support these optional query parameters:

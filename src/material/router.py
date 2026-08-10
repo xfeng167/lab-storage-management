@@ -52,16 +52,27 @@ def list_materials(
 
 @router.get("/search", response_model=list[MaterialRead])
 def search_materials(
+    keyword: str | None = None,
     material_type: str | None = None,
+    source: str | None = None,
     qc_status: str | None = None,
     availability_status: str | None = None,
     location_id: int | None = None,
+    low_stock: bool = False,
     include_archived: bool = False,
     current_user: UserRead = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[MaterialRead]:
     return service.search_materials(
-        db, material_type, qc_status, availability_status, location_id, include_archived
+        db,
+        keyword=keyword,
+        material_type=material_type,
+        source=source,
+        qc_status=qc_status,
+        availability_status=availability_status,
+        location_id=location_id,
+        low_stock=low_stock,
+        include_archived=include_archived,
     )
 
 @router.get("/{material_id}", response_model=MaterialRead)

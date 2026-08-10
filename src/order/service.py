@@ -117,6 +117,7 @@ def list_orders(
     status: str | None = None,
     material_id: int | None = None,
     requested_by_user_id: int | None = None,
+    reviewed_by_user_id: int | None = None,
 ) -> list[OrderRead]:
     query = """
         SELECT
@@ -151,6 +152,10 @@ def list_orders(
     if material_id is not None:
         conditions.append("material_id = :material_id")
         params["material_id"] = material_id
+
+    if reviewed_by_user_id is not None:
+        conditions.append("reviewed_by_user_id = :reviewed_by_user_id")
+        params["reviewed_by_user_id"] = reviewed_by_user_id
 
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
