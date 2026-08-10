@@ -13,6 +13,7 @@ import { formatDate, quantityLabel } from '../utils/format'
 export function MaterialsPage() {
   const { token, user } = useAuth()
   const [materials, setMaterials] = useState<Material[] | null>(null)
+  const [filterOptionMaterials, setFilterOptionMaterials] = useState<Material[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -24,11 +25,13 @@ export function MaterialsPage() {
     if (!token) return
     setError(null)
     try {
-      const [materialResult, locationResult] = await Promise.all([
+      const [materialResult, optionMaterialResult, locationResult] = await Promise.all([
         searchParams ? api.searchMaterials(token, searchParams) : api.listMaterials(token),
+        api.listMaterials(token),
         api.listLocations(token),
       ])
       setMaterials(materialResult)
+      setFilterOptionMaterials(optionMaterialResult)
       setLocations(locationResult)
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Unable to load inventory.')
@@ -38,7 +41,7 @@ export function MaterialsPage() {
   useEffect(() => { void load() }, [load])
 
   const locationNames = useMemo(() => new Map(locations.map((location) => [location.id, location.name])), [locations])
-  const materialTypes = useMemo(() => [...new Set((materials ?? []).map((material) => material.material_type))].sort(), [materials])
+  const materialTypes = useMemo(() => [...new Set(filterOptionMaterials.map((material) => material.material_type))].sort(), [filterOptionMaterials])
 
   function applyFilters() {
     const params: MaterialSearchParams = {

@@ -23,6 +23,26 @@ interface MaterialFormState {
   location_id: string
 }
 
+const pharmaMaterialNameOptions = [
+  'Acetaminophen USP',
+  'Ibuprofen USP',
+  'Metformin Hydrochloride USP',
+  'Sodium Chloride USP',
+  'Lactose Monohydrate NF',
+  'Microcrystalline Cellulose PH 102',
+  'Magnesium Stearate NF',
+  'Povidone K30',
+  'Croscarmellose Sodium NF',
+  'Purified Water USP',
+  'Ethanol 200 Proof USP',
+  'Sodium Hydroxide NF',
+  'Hydrochloric Acid NF',
+  'Phosphate Buffered Saline',
+  'Dimethyl Sulfoxide USP',
+]
+
+const quickMaterialNameOptions = pharmaMaterialNameOptions.slice(0, 6)
+
 function createState(material?: Material): MaterialFormState {
   return {
     material_code: material?.material_code ?? '',
@@ -99,10 +119,26 @@ export function MaterialFormModal({ material, locations, onClose, onSave }: Mate
             <input id="material-code" className="field-input" value={form.material_code} disabled={Boolean(material)} onChange={(event) => update('material_code', event.target.value)} />
           </label>
           <label className="field-label" htmlFor="material-name">Material name
-            <input id="material-name" className="field-input" value={form.material_name} onChange={(event) => update('material_name', event.target.value)} />
+            <input id="material-name" className="field-input" list="pharma-material-name-options" placeholder="e.g. Metformin Hydrochloride USP" value={form.material_name} onChange={(event) => update('material_name', event.target.value)} />
+            <datalist id="pharma-material-name-options">
+              {pharmaMaterialNameOptions.map((name) => <option key={name} value={name} />)}
+            </datalist>
+            <span className="mt-2 text-xs font-medium text-slate-500">Common pharma names</span>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {quickMaterialNameOptions.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-left text-xs font-semibold text-slate-700 transition hover:border-teal-300 hover:bg-teal-50 hover:text-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  onClick={() => update('material_name', name)}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
           </label>
           <label className="field-label" htmlFor="material-type">Material type
-            <input id="material-type" className="field-input" placeholder="e.g. Chemical reagent" value={form.material_type} onChange={(event) => update('material_type', event.target.value)} />
+            <input id="material-type" className="field-input" placeholder="e.g. API, excipient, reagent, packaging component" value={form.material_type} onChange={(event) => update('material_type', event.target.value)} />
           </label>
           <label className="field-label" htmlFor="material-unit">Unit
             <input id="material-unit" className="field-input" placeholder="e.g. bottles" value={form.unit} onChange={(event) => update('unit', event.target.value)} />
@@ -132,7 +168,7 @@ export function MaterialFormModal({ material, locations, onClose, onSave }: Mate
           <textarea id="material-description" className="field-textarea" value={form.description} onChange={(event) => update('description', event.target.value)} />
         </label>
         <label className="field-label" htmlFor="material-source">Source
-          <input id="material-source" className="field-input" value={form.source} onChange={(event) => update('source', event.target.value)} />
+          <input id="material-source" className="field-input" placeholder="e.g. qualified vendor, CMO, internal manufacturing" value={form.source} onChange={(event) => update('source', event.target.value)} />
         </label>
         <div className="flex justify-end gap-3 border-t border-slate-100 pt-5">
           <button type="button" className="button-secondary" onClick={onClose}>Cancel</button>

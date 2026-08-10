@@ -80,10 +80,13 @@ export interface MaterialPayload {
 export type MaterialUpdatePayload = Partial<Omit<MaterialPayload, 'material_code' | 'quantity_available'>>
 
 export interface MaterialSearchParams {
+  keyword?: string
   material_type?: string
+  source?: string
   qc_status?: string
   availability_status?: string
   location_id?: number
+  low_stock?: boolean
   include_archived?: boolean
 }
 

@@ -542,7 +542,9 @@ def search_materials(
         query += " AND qc_status = :qc_status"
         params["qc_status"] = qc_status
 
-    if availability_status:
+    if availability_status == "low_stock":
+        query += " AND quantity_available <= minimum_quantity"
+    elif availability_status:
         query += " AND availability_status = :availability_status"
         params["availability_status"] = availability_status
 

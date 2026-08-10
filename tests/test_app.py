@@ -1052,6 +1052,11 @@ def test_material_search_supports_keyword_source_and_low_stock_filters() -> None
         params={"low_stock": True},
         headers=headers,
     )
+    low_stock_availability_response = client.get(
+        "/materials/search",
+        params={"availability_status": "low_stock"},
+        headers=headers,
+    )
 
     assert keyword_response.status_code == 200
     keyword_material_codes = {
@@ -1076,6 +1081,14 @@ def test_material_search_supports_keyword_source_and_low_stock_filters() -> None
     }
     assert low_stock_material["material_code"] in low_stock_material_codes
     assert enough_stock_material["material_code"] not in low_stock_material_codes
+
+    assert low_stock_availability_response.status_code == 200
+    low_stock_availability_material_codes = {
+        material["material_code"]
+        for material in low_stock_availability_response.json()
+    }
+    assert low_stock_material["material_code"] in low_stock_availability_material_codes
+    assert enough_stock_material["material_code"] not in low_stock_availability_material_codes
 
 
 def test_low_stock_report_includes_material_at_or_below_minimum() -> None:

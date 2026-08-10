@@ -56,10 +56,10 @@ export function DashboardPage() {
     <section>
       <PageHeader eyebrow="Workspace" title={`Good ${new Date().getHours() < 12 ? 'morning' : 'afternoon'}, ${user?.username ?? 'there'}`} description={staffAccess ? 'Monitor inventory health, pending requests, and the activity that needs your attention.' : 'Browse available materials and keep track of your requests.'} actions={<Link className="button-secondary" to="/inventory">Browse inventory</Link>} />
       <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Active materials" value={materials.length} detail="Available in the inventory catalogue" tone="blue" />
-        <MetricCard label="Total on hand" value={totalQuantity.toLocaleString()} detail="Combined quantity across active materials" tone="teal" />
-        <MetricCard label="Low-stock items" value={lowStockCount} detail={lowStockCount ? 'Needs attention before it runs out' : 'All material levels are healthy'} tone="amber" />
-        <MetricCard label={staffAccess ? 'Submitted requests' : 'Open requests'} value={submittedOrders} detail={staffAccess ? 'Awaiting an administrative review' : 'Awaiting a review'} tone="violet" />
+        <MetricCard label="Active materials" value={materials.length} detail="Available in the inventory catalogue" tone="blue" to="/inventory" />
+        <MetricCard label="Total on hand" value={totalQuantity.toLocaleString()} detail="Combined quantity across active materials" tone="teal" to="/inventory" />
+        <MetricCard label="Low-stock items" value={lowStockCount} detail={lowStockCount ? 'Needs attention before it runs out' : 'All material levels are healthy'} tone="amber" to={staffAccess ? '/reports' : '/inventory'} />
+        <MetricCard label={staffAccess ? 'Submitted requests' : 'Open requests'} value={submittedOrders} detail={staffAccess ? 'Awaiting an administrative review' : 'Awaiting a review'} tone="violet" to="/requests" />
       </div>
       <div className="mt-8 grid gap-8 xl:grid-cols-[1.1fr_0.9fr]">
         <section className="rounded-2xl border border-slate-200 bg-white shadow-panel">
