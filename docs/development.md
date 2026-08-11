@@ -46,8 +46,15 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(255) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(20) NOT NULL DEFAULT 'viewer',
+    profile_picture MEDIUMTEXT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+```
+
+If your local `users` table already exists, add the profile picture column:
+
+```sql
+ALTER TABLE users ADD COLUMN profile_picture MEDIUMTEXT NULL;
 ```
 
 Create the token table used by login/logout:
@@ -137,12 +144,25 @@ CREATE TABLE IF NOT EXISTS orders (
     reviewed_by_user_id INT NULL,
     reviewed_at TIMESTAMP NULL,
     outcome_notes TEXT,
+    is_archived BOOLEAN NOT NULL DEFAULT FALSE,
+    archived_at TIMESTAMP NULL,
+    archived_by_user_id INT NULL,
+    archive_reason TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (requested_by_user_id) REFERENCES users(id),
     FOREIGN KEY (material_id) REFERENCES materials(id),
     FOREIGN KEY (reviewed_by_user_id) REFERENCES users(id)
 );
+```
+
+If your local `orders` table already exists, add the archive columns:
+
+```sql
+ALTER TABLE orders ADD COLUMN is_archived BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE orders ADD COLUMN archived_at TIMESTAMP NULL;
+ALTER TABLE orders ADD COLUMN archived_by_user_id INT NULL;
+ALTER TABLE orders ADD COLUMN archive_reason TEXT;
 ```
 
 ## 4. Run the API

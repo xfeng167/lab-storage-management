@@ -1,14 +1,12 @@
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.user.schemas import UserCreate, UserLogin, UserRead, Token
+from src.user.schemas import UserCreate, UserLogin, UserProfileUpdate, UserRead, Token
 from src.utils.constant import ROLE_VIEWER
 from src.utils.security import generate_token, hash_password, hash_token, verify_password
 
 
 def create_user(db: Session, payload: UserCreate) -> UserRead | None:
-    if len(payload.username) < 1 or len(payload.password) < 6 or len(payload.username) > 80 or len(payload.email) > 255 or len(payload.password) > 255:
-        return None
     existing_user = db.execute(
         text("SELECT id FROM users WHERE username = :username OR email = :email"),
         {"username": payload.username, "email": payload.email},
@@ -21,25 +19,26 @@ def create_user(db: Session, payload: UserCreate) -> UserRead | None:
     db.execute(
         text(
             """
-            INSERT INTO users (username, email, password_hash)
-            VALUES (:username, :email, :password_hash)
+            INSERT INTO users (username, email, password_hash, profile_picture)
+            VALUES (:username, :email, :password_hash, :profile_picture)
             """
         ),
         {
             "username": payload.username,
             "email": payload.email,
             "password_hash": password_hash,
+            "profile_picture": None,
         },
     )
     user_id = db.execute(text("SELECT LAST_INSERT_ID()")).scalar_one()
     db.commit()
 
-    return UserRead(id=user_id, username=payload.username, email=payload.email, role=ROLE_VIEWER)  # Default role is ROLE_VIEWER
+    return UserRead(id=user_id, username=payload.username, email=payload.email, role=ROLE_VIEWER, profile_picture=None)  # Default role is ROLE_VIEWER
 
 
 def login_user(db: Session, payload: UserLogin) -> tuple[UserRead, str] | None:
     row = db.execute(
-        text("SELECT id, username, email, password_hash, role FROM users WHERE username = :username"),
+        text("SELECT id, username, email, password_hash, role, profile_picture FROM users WHERE username = :username"),
         {"username": payload.username},
     ).mappings().first()
     if row is None:
@@ -62,12 +61,12 @@ def login_user(db: Session, payload: UserLogin) -> tuple[UserRead, str] | None:
             },
         )
     db.commit()
-    user = UserRead(id=row["id"], username=row["username"], email=row["email"], role=row["role"])
+    user = UserRead(id=row["id"], username=row["username"], email=row["email"], role=row["role"], profile_picture=row["profile_picture"])
     return user, token
 
 def list_users(db: Session) -> list[UserRead]:
-    rows = db.execute(text("SELECT id, username, email, role FROM users")).mappings().all()
-    return [UserRead(id=row["id"], username=row["username"], email=row["email"], role=row["role"]) for row in rows]
+    rows = db.execute(text("SELECT id, username, email, role, profile_picture FROM users")).mappings().all()
+    return [UserRead(id=row["id"], username=row["username"], email=row["email"], role=row["role"], profile_picture=row["profile_picture"]) for row in rows]
 
 def logout_user(db: Session, payload: Token) -> bool:
     result = db.execute(
@@ -79,13 +78,48 @@ def logout_user(db: Session, payload: Token) -> bool:
 
 def get_user(db: Session, user_id: int) -> UserRead | None:
     row = db.execute(
-        text("SELECT id, username, email, role FROM users WHERE id = :user_id"),
+        text("SELECT id, username, email, role, profile_picture FROM users WHERE id = :user_id"),
         {"user_id": user_id},
     ).mappings().first()
     if row is None:
         return None
-    return UserRead(id=row["id"], username=row["username"], email=row["email"], role=row["role"])
+    return UserRead(id=row["id"], username=row["username"], email=row["email"], role=row["role"], profile_picture=row["profile_picture"])
 
 
+def update_profile(db: Session, user_id: int, payload: UserProfileUpdate) -> UserRead | None:
+    existing_user = db.execute(
+        text(
+            """
+            SELECT id
+            FROM users
+            WHERE (username = :username OR email = :email)
+            AND id != :user_id
+            """
+        ),
+        {"username": payload.username, "email": payload.email, "user_id": user_id},
+    ).first()
+    if existing_user is not None:
+        return None
+
+    db.execute(
+        text(
+            """
+            UPDATE users
+            SET username = :username,
+                email = :email,
+                profile_picture = :profile_picture
+            WHERE id = :user_id
+            """
+        ),
+        {
+            "user_id": user_id,
+            "username": payload.username,
+            "email": payload.email,
+            "profile_picture": payload.profile_picture,
+        },
+    )
+    db.commit()
+
+    return get_user(db, user_id)
 
 

@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from src.audit.router import router as audit_router
 from src.core.config import settings
+from src.db.connection import engine
+from src.db.schema import ensure_database_schema
 from src.health.router import router as health_router
 from src.location.router import router as location_router
 from src.test_table.router import router as test_table_router
@@ -10,6 +12,8 @@ from src.order.router import router as order_router
 from src.report.router import router as report_router
 
 def create_app() -> FastAPI:
+    ensure_database_schema(engine)
+
     app = FastAPI(
         title=settings.app_name,
         debug=settings.debug,

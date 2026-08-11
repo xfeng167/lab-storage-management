@@ -28,6 +28,7 @@ TABLE_DEFINITIONS = [
         email VARCHAR(255) NOT NULL UNIQUE,
         password_hash VARCHAR(255) NOT NULL,
         role VARCHAR(20) NOT NULL DEFAULT 'viewer',
+        profile_picture MEDIUMTEXT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """,
@@ -102,6 +103,10 @@ TABLE_DEFINITIONS = [
         reviewed_by_user_id INT NULL,
         reviewed_at TIMESTAMP NULL,
         outcome_notes TEXT,
+        is_archived BOOLEAN NOT NULL DEFAULT FALSE,
+        archived_at TIMESTAMP NULL,
+        archived_by_user_id INT NULL,
+        archive_reason TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (requested_by_user_id) REFERENCES users(id),
@@ -141,6 +146,20 @@ def _create_test_tables(engine: Engine) -> None:
     with engine.begin() as connection:
         for table_definition in TABLE_DEFINITIONS:
             connection.execute(text(table_definition))
+        try:
+            connection.execute(text("ALTER TABLE users ADD COLUMN profile_picture MEDIUMTEXT NULL"))
+        except Exception:
+            pass
+        for column_definition in [
+            "ADD COLUMN is_archived BOOLEAN NOT NULL DEFAULT FALSE",
+            "ADD COLUMN archived_at TIMESTAMP NULL",
+            "ADD COLUMN archived_by_user_id INT NULL",
+            "ADD COLUMN archive_reason TEXT",
+        ]:
+            try:
+                connection.execute(text(f"ALTER TABLE orders {column_definition}"))
+            except Exception:
+                pass
 
 
 def _clean_test_tables(engine: Engine) -> None:

@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { AuthProvider } from './auth/AuthContext'
 
-const viewer = { id: 7, username: 'mira', email: 'mira@example.com', role: 'viewer' }
-const admin = { id: 1, username: 'admin', email: 'admin@example.com', role: 'admin' }
+const viewer = { id: 7, username: 'mira', email: 'mira@example.com', role: 'viewer', profile_picture: null }
+const admin = { id: 1, username: 'admin', email: 'admin@example.com', role: 'admin', profile_picture: null }
 
 function json(body: unknown, status = 200): Response {
   return {
@@ -43,7 +43,7 @@ describe('application routes', () => {
     const user = userEvent.setup()
 
     renderApp()
-    expect(await screen.findByRole('heading', { name: 'Account overview' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Profile settings' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Sign out' }))
 
     expect(await screen.findByRole('heading', { name: 'Sign in to your account' })).toBeInTheDocument()
@@ -60,6 +60,26 @@ describe('application routes', () => {
     renderApp('/account/users')
     expect(await screen.findByRole('heading', { name: 'User directory' })).toBeInTheDocument()
     expect(await screen.findByText('mira@example.com')).toBeInTheDocument()
+  })
+
+  it('clears and restores one previous profile picture', async () => {
+    const oldPicture = 'data:image/png;base64,old-picture'
+    window.localStorage.setItem('lab-storage-management.auth-token', 'valid-token')
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json({ ...viewer, profile_picture: oldPicture }))
+      .mockResolvedValueOnce(json({ ...viewer, profile_picture: null }))
+      .mockResolvedValueOnce(json({ ...viewer, profile_picture: oldPicture }))
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    renderApp()
+
+    expect(await screen.findByRole('heading', { name: 'Profile settings' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Clear picture' }))
+    await waitFor(() => expect(JSON.parse(fetchMock.mock.calls[1][1].body as string).profile_picture).toBeNull())
+
+    await user.click(screen.getByRole('button', { name: 'Use previous' }))
+    await waitFor(() => expect(JSON.parse(fetchMock.mock.calls[2][1].body as string).profile_picture).toBe(oldPicture))
   })
 
   it('clears an expired session and returns to login', async () => {

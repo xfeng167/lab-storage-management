@@ -9,10 +9,16 @@ interface RegisterForm {
   confirmPassword: string
 }
 
+const usernamePattern = /^[A-Za-z][A-Za-z0-9_]{2,29}$/
+const emailPattern = /^\S+@\S+\.\S+$/
+
 function validate(form: RegisterForm): string | null {
-  if (!form.username.trim() || form.username.trim().length > 80) return 'Username must be between 1 and 80 characters.'
-  if (!/^\S+@\S+\.\S+$/.test(form.email) || form.email.length > 255) return 'Enter a valid email address up to 255 characters.'
-  if (form.password.length < 6 || form.password.length > 255) return 'Password must be between 6 and 255 characters.'
+  const username = form.username.trim()
+  const email = form.email.trim()
+  if (!usernamePattern.test(username)) return 'Username must be 3-30 characters, start with a letter, and use only letters, numbers, or underscores.'
+  if (!emailPattern.test(email) || email.length > 255) return 'Enter a valid email address up to 255 characters.'
+  if (form.password.length < 8 || form.password.length > 72) return 'Password must be 8-72 characters.'
+  if (!/[A-Za-z]/.test(form.password) || !/\d/.test(form.password)) return 'Password must include at least one letter and one number.'
   if (form.password !== form.confirmPassword) return 'Passwords do not match.'
   return null
 }
@@ -56,13 +62,16 @@ export function RegisterPage() {
       {error && <p className="alert-error mt-6" role="alert">{error}</p>}
       <form className="mt-8 space-y-5" onSubmit={handleSubmit} noValidate>
         <label className="field-label" htmlFor="register-username">Username
-          <input id="register-username" name="username" autoComplete="username" className="field-input" value={form.username} onChange={(event) => update('username', event.target.value)} />
+          <input id="register-username" name="username" autoComplete="username" className="field-input" minLength={3} maxLength={30} pattern="[A-Za-z][A-Za-z0-9_]{2,29}" aria-label="Username" aria-describedby="username-help" value={form.username} onChange={(event) => update('username', event.target.value)} />
+          <span id="username-help" className="mt-1 text-xs font-normal text-slate-500">3-30 characters. Start with a letter. Letters, numbers, and underscores only.</span>
         </label>
         <label className="field-label" htmlFor="email">Email address
-          <input id="email" name="email" type="email" autoComplete="email" className="field-input" value={form.email} onChange={(event) => update('email', event.target.value)} />
+          <input id="email" name="email" type="email" autoComplete="email" className="field-input" maxLength={255} aria-label="Email address" aria-describedby="email-help" value={form.email} onChange={(event) => update('email', event.target.value)} />
+          <span id="email-help" className="mt-1 text-xs font-normal text-slate-500">Use a valid email address, up to 255 characters.</span>
         </label>
         <label className="field-label" htmlFor="register-password">Password
-          <input id="register-password" name="password" type="password" autoComplete="new-password" className="field-input" value={form.password} onChange={(event) => update('password', event.target.value)} />
+          <input id="register-password" name="password" type="password" autoComplete="new-password" className="field-input" minLength={8} maxLength={72} aria-label="Password" aria-describedby="password-help" value={form.password} onChange={(event) => update('password', event.target.value)} />
+          <span id="password-help" className="mt-1 text-xs font-normal text-slate-500">8-72 characters with at least one letter and one number.</span>
         </label>
         <label className="field-label" htmlFor="confirm-password">Confirm password
           <input id="confirm-password" name="confirmPassword" type="password" autoComplete="new-password" className="field-input" value={form.confirmPassword} onChange={(event) => update('confirmPassword', event.target.value)} />

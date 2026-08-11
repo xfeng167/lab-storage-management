@@ -11,6 +11,7 @@ const styles: Record<string, string> = {
   fulfilled: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
   rejected: 'bg-rose-50 text-rose-800 ring-rose-200',
   canceled: 'bg-slate-100 text-slate-700 ring-slate-200',
+  archived: 'bg-zinc-100 text-zinc-700 ring-zinc-200',
   passed: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
   pending: 'bg-amber-50 text-amber-800 ring-amber-200',
   failed: 'bg-rose-50 text-rose-800 ring-rose-200',

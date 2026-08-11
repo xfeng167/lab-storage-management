@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ApiError, api, setUnauthorizedHandler } from '../api/client'
-import type { LoginPayload, RegisterPayload, User } from '../types'
+import type { LoginPayload, RegisterPayload, User, UserProfilePayload } from '../types'
 import { clearToken, readToken, saveToken } from './storage'
 
 type AuthStatus = 'loading' | 'authenticated' | 'anonymous' | 'unavailable'
@@ -12,6 +12,7 @@ interface AuthContextValue {
   error: string | null
   login: (payload: LoginPayload) => Promise<void>
   register: (payload: RegisterPayload) => Promise<void>
+  updateProfile: (payload: UserProfilePayload) => Promise<void>
   logout: () => Promise<void>
   retrySession: () => Promise<void>
 }
@@ -88,6 +89,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await api.register(payload)
   }, [])
 
+  const updateProfile = useCallback(async (payload: UserProfilePayload) => {
+    const currentToken = token ?? readToken()
+    if (!currentToken) throw new Error('You must be signed in to update your profile.')
+    const updatedUser = await api.updateProfile(currentToken, payload)
+    setUser(updatedUser)
+  }, [token])
+
   const logout = useCallback(async () => {
     const currentToken = token ?? readToken()
     try {
@@ -106,8 +114,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [token])
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, token, error, login, register, logout, retrySession: restoreSession }),
-    [error, login, logout, register, restoreSession, status, token, user],
+    () => ({ status, user, token, error, login, register, updateProfile, logout, retrySession: restoreSession }),
+    [error, login, logout, register, restoreSession, status, token, updateProfile, user],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

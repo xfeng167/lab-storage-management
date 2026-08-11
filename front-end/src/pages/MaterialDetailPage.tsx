@@ -44,8 +44,10 @@ export function MaterialDetailPage() {
 
   async function updateMaterial(payload: MaterialUpdatePayload) {
     if (!token || !material) return
-    await api.updateMaterial(token, material.id, payload)
-    await load()
+    const updatedMaterial = await api.updateMaterial(token, material.id, payload)
+    setMaterial(updatedMaterial)
+    const updatedLocations = await api.listLocations(token)
+    setLocations(updatedLocations)
     setNotice('Material details updated.')
   }
 

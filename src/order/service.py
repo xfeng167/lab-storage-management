@@ -47,6 +47,10 @@ def _get_order_row(db: Session, order_id: int):
                 reviewed_by_user_id,
                 reviewed_at,
                 outcome_notes,
+                is_archived,
+                archived_at,
+                archived_by_user_id,
+                archive_reason,
                 created_at,
                 updated_at
             FROM orders
@@ -118,6 +122,7 @@ def list_orders(
     material_id: int | None = None,
     requested_by_user_id: int | None = None,
     reviewed_by_user_id: int | None = None,
+    include_archived: bool = False,
 ) -> list[OrderRead]:
     query = """
         SELECT
@@ -131,6 +136,10 @@ def list_orders(
             reviewed_by_user_id,
             reviewed_at,
             outcome_notes,
+            is_archived,
+            archived_at,
+            archived_by_user_id,
+            archive_reason,
             created_at,
             updated_at
         FROM orders
@@ -144,6 +153,9 @@ def list_orders(
     elif requested_by_user_id is not None:
         conditions.append("requested_by_user_id = :requested_by_user_id")
         params["requested_by_user_id"] = requested_by_user_id
+
+    if not include_archived:
+        conditions.append("is_archived = FALSE")
 
     if status is not None:
         conditions.append("status = :status")
@@ -386,6 +398,41 @@ def cancel_order(
             "status": ORDER_STATUS_CANCELED,
             "reviewed_by_user_id": current_user.id,
             "outcome_notes": _outcome_notes(payload),
+        },
+    )
+    db.commit()
+
+    return _row_to_order(_get_order_row(db, order_id)), None
+
+
+def archive_order(
+    db: Session,
+    order_id: int,
+    current_user: UserRead,
+    payload: OrderReview | None = None,
+) -> tuple[OrderRead | None, str | None]:
+    order = _get_order_row(db, order_id)
+    if order is None or not _can_access_order(order, current_user):
+        return None, "not_found"
+    if order["status"] in {ORDER_STATUS_SUBMITTED, ORDER_STATUS_APPROVED}:
+        return None, "invalid_status"
+
+    db.execute(
+        text(
+            """
+            UPDATE orders
+            SET
+                is_archived = TRUE,
+                archived_at = CURRENT_TIMESTAMP,
+                archived_by_user_id = :archived_by_user_id,
+                archive_reason = :archive_reason
+            WHERE id = :order_id
+            """
+        ),
+        {
+            "order_id": order_id,
+            "archived_by_user_id": current_user.id,
+            "archive_reason": _outcome_notes(payload),
         },
     )
     db.commit()

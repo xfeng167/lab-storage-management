@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from src.db.connection import get_db
 from src.user import service
-from src.user.schemas import LoginResponse, LogoutResponse, UserCreate, UserLogin, UserRead, Token
+from src.user.schemas import LoginResponse, LogoutResponse, UserCreate, UserLogin, UserProfileUpdate, UserRead, Token
 from src.auth.dependencies import get_current_user, require_admin_user
 
 router = APIRouter()
@@ -57,3 +57,17 @@ def check_user(
 ) -> UserRead:
     return current_user
 
+
+@router.patch("/me", response_model=UserRead)
+def update_current_user_profile(
+    payload: UserProfileUpdate,
+    current_user: UserRead = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserRead:
+    user = service.update_profile(db, current_user.id, payload)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Username or email already exists",
+        )
+    return user

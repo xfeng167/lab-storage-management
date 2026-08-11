@@ -5,6 +5,7 @@ export interface User {
   username: string
   email: string
   role: UserRole
+  profile_picture: string | null
 }
 
 export interface LoginPayload {
@@ -14,6 +15,12 @@ export interface LoginPayload {
 
 export interface RegisterPayload extends LoginPayload {
   email: string
+}
+
+export interface UserProfilePayload {
+  username: string
+  email: string
+  profile_picture: string | null
 }
 
 export interface LoginResponse {
@@ -101,6 +108,10 @@ export interface Order {
   reviewed_by_user_id: number | null
   reviewed_at: string | null
   outcome_notes: string | null
+  is_archived: boolean
+  archived_at: string | null
+  archived_by_user_id: number | null
+  archive_reason: string | null
   created_at: string | null
   updated_at: string | null
 }

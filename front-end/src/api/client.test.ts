@@ -25,12 +25,24 @@ describe('API client', () => {
   })
 
   it('adds a bearer token to protected requests', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(response({ id: 1, username: 'lina', email: 'lina@example.com', role: 'viewer' }))
+    const fetchMock = vi.fn().mockResolvedValue(response({ id: 1, username: 'lina', email: 'lina@example.com', role: 'viewer', profile_picture: null }))
     vi.stubGlobal('fetch', fetchMock)
 
     await api.getCurrentUser('stored-token')
 
     expect(fetchMock).toHaveBeenCalledWith('/api/users/me', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer stored-token' }) }))
+  })
+
+  it('updates the signed-in user profile', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({ id: 1, username: 'lina_new', email: 'new@example.com', role: 'viewer', profile_picture: 'data:image/png;base64,abc' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.updateProfile('stored-token', { username: 'lina_new', email: 'new@example.com', profile_picture: 'data:image/png;base64,abc' })
+
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/users/me')
+    expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({ method: 'PATCH' }))
+    expect(fetchMock.mock.calls[0][1].headers).toEqual(expect.objectContaining({ Authorization: 'Bearer stored-token' }))
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string)).toEqual({ username: 'lina_new', email: 'new@example.com', profile_picture: 'data:image/png;base64,abc' })
   })
 
   it('returns the backend detail for failed requests', async () => {
@@ -45,10 +57,10 @@ describe('API client', () => {
       .mockResolvedValueOnce(response({ id: 2 }))
     vi.stubGlobal('fetch', fetchMock)
 
-    await api.searchMaterials('stored-token', { qc_status: 'pending', location_id: 4, include_archived: true })
+    await api.searchMaterials('stored-token', { keyword: 'Metformin USP', qc_status: 'pending', location_id: 4, include_archived: true })
     await api.checkInMaterial('stored-token', 2, 5, 'Received shipment')
 
-    expect(fetchMock.mock.calls[0][0]).toBe('/api/materials/search?qc_status=pending&location_id=4&include_archived=true')
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/materials/search?keyword=Metformin+USP&qc_status=pending&location_id=4&include_archived=true')
     expect(fetchMock.mock.calls[0][1].headers).toEqual(expect.objectContaining({ Authorization: 'Bearer stored-token' }))
     expect(fetchMock.mock.calls[1][0]).toBe('/api/materials/2/check-in')
     expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({ quantity: 5, reason: 'Received shipment' })
@@ -57,14 +69,18 @@ describe('API client', () => {
   it('uses request review and audit filter endpoints', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response({ id: 3, status: 'approved' }))
+      .mockResolvedValueOnce(response({ id: 3, is_archived: true }))
       .mockResolvedValueOnce(response([]))
     vi.stubGlobal('fetch', fetchMock)
 
     await api.approveOrder('admin-token', 3, 'Approved for use')
+    await api.archiveOrder('admin-token', 3, 'No longer needed in queue')
     await api.listAuditLogs('admin-token', { user_id: 1, operation_type: 'check_in' })
 
     expect(fetchMock.mock.calls[0][0]).toBe('/api/orders/3/approve')
     expect(JSON.parse(fetchMock.mock.calls[0][1].body as string)).toEqual({ outcome_notes: 'Approved for use' })
-    expect(fetchMock.mock.calls[1][0]).toBe('/api/audit-logs?user_id=1&operation_type=check_in')
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/orders/3/archive')
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({ outcome_notes: 'No longer needed in queue' })
+    expect(fetchMock.mock.calls[2][0]).toBe('/api/audit-logs?user_id=1&operation_type=check_in')
   })
 })

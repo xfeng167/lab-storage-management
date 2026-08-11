@@ -55,6 +55,7 @@ def list_orders(
     material_id: int | None = None,
     requested_by_user_id: int | None = None,
     reviewed_by_user_id: int | None = None,
+    include_archived: bool = False,
     current_user: UserRead = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[OrderRead]:
@@ -65,6 +66,7 @@ def list_orders(
         material_id=material_id,
         requested_by_user_id=requested_by_user_id,
         reviewed_by_user_id=reviewed_by_user_id,
+        include_archived=include_archived,
     )
 
 
@@ -130,6 +132,19 @@ def cancel_order(
     db: Session = Depends(get_db),
 ) -> OrderRead:
     order, error = service.cancel_order(db, order_id, current_user, payload)
+    if order is None:
+        _raise_order_error(error)
+    return order
+
+
+@router.post("/{order_id}/archive", response_model=OrderRead)
+def archive_order(
+    order_id: int,
+    payload: OrderReview | None = None,
+    current_user: UserRead = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> OrderRead:
+    order, error = service.archive_order(db, order_id, current_user, payload)
     if order is None:
         _raise_order_error(error)
     return order

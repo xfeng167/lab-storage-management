@@ -215,6 +215,109 @@ def test_health_check() -> None:
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
+
+def test_registration_rejects_invalid_username_email_and_password() -> None:
+    client = TestClient(app)
+
+    invalid_username_response = client.post(
+        "/users/register",
+        json={
+            "username": "1bad",
+            "email": "valid@example.com",
+            "password": "password123",
+        },
+    )
+    assert invalid_username_response.status_code == 422
+
+    invalid_email_response = client.post(
+        "/users/register",
+        json={
+            "username": "valid_user",
+            "email": "not-an-email",
+            "password": "password123",
+        },
+    )
+    assert invalid_email_response.status_code == 422
+
+    invalid_password_response = client.post(
+        "/users/register",
+        json={
+            "username": "valid_user",
+            "email": "valid@example.com",
+            "password": "password",
+        },
+    )
+    assert invalid_password_response.status_code == 422
+
+
+def test_user_can_update_profile_and_picture() -> None:
+    client = TestClient(app)
+
+    username = "profile_user"
+    email = "profile_user@example.com"
+    password = "password123"
+
+    create_test_viewer(client, username, email, password)
+    headers = login_test_user(client, username, password)
+
+    response = client.patch(
+        "/users/me",
+        json={
+            "username": "profile_updated",
+            "email": "profile_updated@example.com",
+            "profile_picture": "data:image/png;base64,abc123",
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    updated_user = response.json()
+    assert updated_user["username"] == "profile_updated"
+    assert updated_user["email"] == "profile_updated@example.com"
+    assert updated_user["profile_picture"] == "data:image/png;base64,abc123"
+
+    me_response = client.get("/users/me", headers=headers)
+    assert me_response.status_code == 200
+    assert me_response.json()["username"] == "profile_updated"
+
+    clear_picture_response = client.patch(
+        "/users/me",
+        json={
+            "username": "profile_updated",
+            "email": "profile_updated@example.com",
+            "profile_picture": None,
+        },
+        headers=headers,
+    )
+    assert clear_picture_response.status_code == 200
+    assert clear_picture_response.json()["profile_picture"] is None
+
+
+def test_user_cannot_update_profile_to_duplicate_identity() -> None:
+    client = TestClient(app)
+
+    first_username = "profile_first"
+    first_email = "profile_first@example.com"
+    second_username = "profile_second"
+    second_email = "profile_second@example.com"
+    password = "password123"
+
+    create_test_viewer(client, first_username, first_email, password)
+    create_test_viewer(client, second_username, second_email, password)
+    headers = login_test_user(client, first_username, password)
+
+    response = client.patch(
+        "/users/me",
+        json={
+            "username": second_username,
+            "email": first_email,
+            "profile_picture": None,
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 409
+
 def test_list_materials_requires_auth() -> None:
     client = TestClient(app)
 
@@ -690,6 +793,64 @@ def test_cancel_approved_order_releases_reserved_quantity() -> None:
     material_after_cancel = material_after_cancel_response.json()
     assert material_after_cancel["quantity_available"] == 10
     assert material_after_cancel["quantity_reserved"] == 0
+
+
+def test_archive_order_hides_it_from_default_request_list() -> None:
+    client = TestClient(app)
+
+    username = "archive_order_admin"
+    email = "archive_order_admin@example.com"
+    password = "password123"
+    material_code = "TEST-ARCHIVE-ORDER-001"
+
+    clean_up_order_workflow_test_data(username, email, material_code)
+    create_test_admin(username, email, password)
+
+    headers = login_test_user(client, username, password)
+    material = create_test_material(
+        client,
+        headers,
+        material_code,
+        "Archive Order Test Material",
+        10,
+    )
+    order = create_test_order(
+        client,
+        headers,
+        material["id"],
+        request_notes="Archive order test",
+    )
+
+    reject_response = client.post(
+        f"/orders/{order['id']}/reject",
+        headers=headers,
+    )
+    assert reject_response.status_code == 200
+
+    archive_response = client.post(
+        f"/orders/{order['id']}/archive",
+        json={"outcome_notes": "No longer needed in active queue"},
+        headers=headers,
+    )
+
+    assert archive_response.status_code == 200
+    archived_order = archive_response.json()
+    assert archived_order["is_archived"] is True
+    assert archived_order["archive_reason"] == "No longer needed in active queue"
+
+    default_list_response = client.get("/orders", headers=headers)
+    assert default_list_response.status_code == 200
+    default_order_ids = {entry["id"] for entry in default_list_response.json()}
+    assert order["id"] not in default_order_ids
+
+    archived_list_response = client.get(
+        "/orders",
+        params={"include_archived": True},
+        headers=headers,
+    )
+    assert archived_list_response.status_code == 200
+    archived_order_ids = {entry["id"] for entry in archived_list_response.json()}
+    assert order["id"] in archived_order_ids
 
 
 def test_user_cannot_view_another_users_order() -> None:

@@ -9,6 +9,10 @@ function navClass({ isActive }: { isActive: boolean }): string {
   return `rounded-lg px-3 py-2 text-sm font-medium transition ${isActive ? 'bg-lab-50 text-lab-800' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'}`
 }
 
+function initials(username: string | undefined): string {
+  return (username || 'U').slice(0, 2).toUpperCase()
+}
+
 export function AppShell() {
   const { user, logout } = useAuth()
   const [isOpen, setIsOpen] = useState(false)
@@ -50,10 +54,15 @@ export function AppShell() {
               {navigation.filter((item) => item.visible).map((item) => <NavLink key={item.to} to={item.to} className={navClass}>{item.label}</NavLink>)}
             </nav>
             <div className="h-7 border-l border-slate-200" />
-            <div className="text-right text-xs leading-5 text-slate-500">
-              <NavLink to="/account" className="block font-semibold text-slate-700 hover:text-lab-800">{user?.username}</NavLink>
-              <span className="mr-2">{formatRole(user?.role ?? '')}</span>
-              <button type="button" className="font-medium text-teal-700 hover:text-teal-800" onClick={handleLogout}>Sign out</button>
+            <div className="flex items-center gap-3">
+              <NavLink to="/account" className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-lab-50 text-sm font-semibold text-lab-800 ring-1 ring-slate-200 transition hover:ring-teal-300" aria-label="Open account profile">
+                {user?.profile_picture ? <img className="h-full w-full object-cover" src={user.profile_picture} alt="" /> : <span>{initials(user?.username)}</span>}
+              </NavLink>
+              <div className="text-right text-xs leading-5 text-slate-500">
+                <NavLink to="/account" className="block font-semibold text-slate-700 hover:text-lab-800">{user?.username}</NavLink>
+                <span className="mr-2">{formatRole(user?.role ?? '')}</span>
+                <button type="button" className="font-medium text-teal-700 hover:text-teal-800" onClick={handleLogout}>Sign out</button>
+              </div>
             </div>
           </div>
         </div>
@@ -61,7 +70,12 @@ export function AppShell() {
           <div id="account-navigation" className="border-t border-slate-100 px-5 py-3 md:hidden">
             <nav className="flex flex-col gap-1" aria-label="Mobile navigation">
               {navigation.filter((item) => item.visible).map((item) => <NavLink key={item.to} to={item.to} className={navClass} onClick={() => setIsOpen(false)}>{item.label}</NavLink>)}
-              <NavLink to="/account" className={navClass} onClick={() => setIsOpen(false)}>Account</NavLink>
+              <NavLink to="/account" className={`${navClass({ isActive: false })} flex items-center gap-3`} onClick={() => setIsOpen(false)}>
+                <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-lg bg-lab-50 text-xs font-semibold text-lab-800 ring-1 ring-slate-200">
+                  {user?.profile_picture ? <img className="h-full w-full object-cover" src={user.profile_picture} alt="" /> : initials(user?.username)}
+                </span>
+                Account
+              </NavLink>
               <button type="button" className="mt-1 rounded-lg px-3 py-2 text-left text-sm font-medium text-teal-700" onClick={handleLogout}>Sign out</button>
             </nav>
           </div>

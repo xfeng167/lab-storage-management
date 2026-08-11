@@ -9,7 +9,21 @@ import { StatusBadge } from '../components/StatusBadge'
 import { isAdmin, type Material, type Order } from '../types'
 import { formatDate, quantityLabel } from '../utils/format'
 
-type ReviewAction = 'approve' | 'reject' | 'fulfill' | 'cancel'
+type ReviewAction = 'approve' | 'reject' | 'fulfill' | 'cancel' | 'archive'
+
+function canArchiveOrder(order: Order): boolean {
+  return !order.is_archived && !['submitted', 'approved'].includes(order.status)
+}
+
+function requestSummary(orders: Order[] | null) {
+  const entries = orders ?? []
+  const archived = entries.filter((order) => order.is_archived).length
+  return {
+    total: entries.length,
+    active: entries.length - archived,
+    archived,
+  }
+}
 
 export function OrdersPage() {
   const { token, user } = useAuth()
@@ -20,20 +34,22 @@ export function OrdersPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [review, setReview] = useState<{ order: Order; action: ReviewAction } | null>(null)
+  const [includeArchived, setIncludeArchived] = useState(false)
   const adminAccess = isAdmin(user)
 
   const load = useCallback(async () => {
     if (!token) return
     setError(null)
     try {
-      const [orderResult, materialResult] = await Promise.all([api.listOrders(token), api.listMaterials(token)])
+      const [orderResult, materialResult] = await Promise.all([api.listOrders(token, { include_archived: includeArchived }), api.listMaterials(token)])
       setOrders(orderResult)
       setMaterials(materialResult)
     } catch (caughtError) { setError(caughtError instanceof Error ? caughtError.message : 'Unable to load requests.') }
-  }, [token])
+  }, [includeArchived, token])
 
   useEffect(() => { void load() }, [load])
   const materialMap = useMemo(() => new Map(materials.map((material) => [material.id, material])), [materials])
+  const summary = useMemo(() => requestSummary(orders), [orders])
 
   async function openOrder(id: number) {
     if (!token) return
@@ -47,8 +63,20 @@ export function OrdersPage() {
       <PageHeader eyebrow={adminAccess ? 'Administration' : 'Material requests'} title={adminAccess ? 'Request queue' : 'Your requests'} description={adminAccess ? 'Review, approve, fulfill, or cancel requests across the laboratory.' : 'Submit requests for available material and follow each decision through to fulfillment.'} actions={<button className="button-primary" onClick={() => setIsCreateOpen(true)}>New request</button>} />
       {notice && <p className="alert-info mt-6" role="status">{notice}</p>}
       {error && <p className="alert-error mt-6" role="alert">{error}</p>}
-      <section className="mt-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-panel">
-        {orders?.length ? <div className="overflow-x-auto"><table className="min-w-full divide-y divide-slate-200"><thead className="bg-slate-50"><tr><th className="table-heading">Request</th>{adminAccess && <th className="table-heading">Requester</th>}<th className="table-heading">Material</th><th className="table-heading">Status</th><th className="table-heading">Created</th><th className="table-heading"><span className="sr-only">Actions</span></th></tr></thead><tbody className="divide-y divide-slate-100">{orders.map((order) => { const material = materialMap.get(order.material_id); return <tr key={order.id} className="hover:bg-slate-50"><td className="table-cell"><p className="font-semibold text-slate-900">Request #{order.id}</p><p className="mt-1 text-xs text-slate-500">{quantityLabel(order.requested_quantity, material?.unit ?? 'units')}{order.reserved_quantity ? ` · ${order.reserved_quantity} reserved` : ''}</p></td>{adminAccess && <td className="table-cell">User #{order.requested_by_user_id}</td>}<td className="table-cell"><p className="font-medium text-slate-900">{material?.material_name ?? `Material #${order.material_id}`}</p><p className="mt-1 text-xs text-slate-500">{material?.material_code ?? 'Unavailable material record'}</p></td><td className="table-cell"><StatusBadge value={order.status} kind="order" /></td><td className="table-cell whitespace-nowrap text-xs">{formatDate(order.created_at)}</td><td className="table-cell"><div className="flex justify-end gap-3"><button type="button" className="link text-sm" onClick={() => void openOrder(order.id)}>View</button>{adminAccess && order.status === 'submitted' && <><button type="button" className="link text-sm" onClick={() => setReview({ order, action: 'approve' })}>Approve</button><button type="button" className="link text-sm" onClick={() => setReview({ order, action: 'reject' })}>Reject</button></>}{adminAccess && order.status === 'approved' && <button type="button" className="link text-sm" onClick={() => setReview({ order, action: 'fulfill' })}>Fulfill</button>}{(order.status === 'submitted' || order.status === 'approved') && <button type="button" className="link text-sm" onClick={() => setReview({ order, action: 'cancel' })}>Cancel</button>}</div></td></tr> })}</tbody></table></div> : <EmptyState title="No requests yet" description="Create a request for any active material in the catalogue." action={<button className="button-primary" onClick={() => setIsCreateOpen(true)}>New request</button>} />}
+      <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-panel">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-950">{includeArchived ? 'All requests' : 'Active request queue'}</h2>
+            <p className="mt-1 text-sm text-slate-500">{includeArchived ? `${summary.total} total requests shown, including ${summary.archived} archived.` : `${summary.active} active requests shown. Archived requests are hidden.`}</p>
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-lab-700 focus:ring-teal-500" checked={includeArchived} onChange={(event) => setIncludeArchived(event.target.checked)} />
+            Include archived requests
+          </label>
+        </div>
+      </section>
+      <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-panel">
+        {orders?.length ? <div className="overflow-x-auto"><table className="min-w-full divide-y divide-slate-200"><thead className="bg-slate-50"><tr><th className="table-heading">Request</th>{adminAccess && <th className="table-heading">Requester</th>}<th className="table-heading">Material</th><th className="table-heading">Status</th><th className="table-heading">Created</th><th className="table-heading"><span className="sr-only">Actions</span></th></tr></thead><tbody className="divide-y divide-slate-100">{orders.map((order) => { const material = materialMap.get(order.material_id); return <tr key={order.id} className={order.is_archived ? 'bg-slate-50/70 text-slate-500 hover:bg-slate-100' : 'hover:bg-slate-50'}><td className="table-cell"><p className={order.is_archived ? 'font-semibold text-slate-600' : 'font-semibold text-slate-900'}>Request #{order.id}</p><p className="mt-1 text-xs text-slate-500">{quantityLabel(order.requested_quantity, material?.unit ?? 'units')}{order.reserved_quantity ? ` · ${order.reserved_quantity} reserved` : ''}</p></td>{adminAccess && <td className="table-cell">User #{order.requested_by_user_id}</td>}<td className="table-cell"><p className={order.is_archived ? 'font-medium text-slate-600' : 'font-medium text-slate-900'}>{material?.material_name ?? `Material #${order.material_id}`}</p><p className="mt-1 text-xs text-slate-500">{material?.material_code ?? 'Unavailable material record'}</p></td><td className="table-cell"><div className="flex flex-wrap gap-2"><StatusBadge value={order.status} kind="order" />{order.is_archived && <StatusBadge value="archived" kind="order" />}</div></td><td className="table-cell whitespace-nowrap text-xs">{formatDate(order.created_at)}</td><td className="table-cell"><div className="flex justify-end gap-3"><button type="button" className="link text-sm" onClick={() => void openOrder(order.id)}>View</button>{adminAccess && order.status === 'submitted' && <><button type="button" className="link text-sm" onClick={() => setReview({ order, action: 'approve' })}>Approve</button><button type="button" className="link text-sm" onClick={() => setReview({ order, action: 'reject' })}>Reject</button></>}{adminAccess && order.status === 'approved' && <button type="button" className="link text-sm" onClick={() => setReview({ order, action: 'fulfill' })}>Fulfill</button>}{(order.status === 'submitted' || order.status === 'approved') && <button type="button" className="link text-sm" onClick={() => setReview({ order, action: 'cancel' })}>Cancel</button>}{canArchiveOrder(order) && <button type="button" className="link text-sm" onClick={() => setReview({ order, action: 'archive' })}>Archive</button>}</div></td></tr> })}</tbody></table></div> : <EmptyState title={includeArchived ? 'No requests found' : 'No active requests'} description={includeArchived ? 'Create a request for any active material in the catalogue.' : 'Create a request or include archived requests to review older records.'} action={<button className="button-primary" onClick={() => setIsCreateOpen(true)}>New request</button>} />}
       </section>
       {isCreateOpen && <CreateRequestDialog materials={materials} onClose={() => setIsCreateOpen(false)} onComplete={async () => { await load(); setNotice('Your material request was submitted.') }} />}
       {selectedOrder && <OrderDetailDialog order={selectedOrder} material={materialMap.get(selectedOrder.material_id)} onClose={() => setSelectedOrder(null)} />}
@@ -83,7 +111,7 @@ function CreateRequestDialog({ materials, onClose, onComplete }: { materials: Ma
 }
 
 function OrderDetailDialog({ order, material, onClose }: { order: Order; material: Material | undefined; onClose: () => void }) {
-  return <Modal title={`Request #${order.id}`} onClose={onClose}><dl className="divide-y divide-slate-100"><OrderDetail label="Material" value={material ? `${material.material_name} (${material.material_code})` : `Material #${order.material_id}`} /><OrderDetail label="Requested quantity" value={quantityLabel(order.requested_quantity, material?.unit ?? 'units')} /><OrderDetail label="Reserved quantity" value={quantityLabel(order.reserved_quantity, material?.unit ?? 'units')} /><OrderDetail label="Status" value={<StatusBadge value={order.status} kind="order" />} /><OrderDetail label="Request notes" value={order.request_notes || 'None'} /><OrderDetail label="Outcome notes" value={order.outcome_notes || 'No outcome recorded'} /><OrderDetail label="Reviewed" value={formatDate(order.reviewed_at)} /><OrderDetail label="Created" value={formatDate(order.created_at)} /></dl></Modal>
+  return <Modal title={`Request #${order.id}`} onClose={onClose}><dl className="divide-y divide-slate-100"><OrderDetail label="Material" value={material ? `${material.material_name} (${material.material_code})` : `Material #${order.material_id}`} /><OrderDetail label="Requested quantity" value={quantityLabel(order.requested_quantity, material?.unit ?? 'units')} /><OrderDetail label="Reserved quantity" value={quantityLabel(order.reserved_quantity, material?.unit ?? 'units')} /><OrderDetail label="Status" value={<StatusBadge value={order.status} kind="order" />} /><OrderDetail label="Request notes" value={order.request_notes || 'None'} /><OrderDetail label="Outcome notes" value={order.outcome_notes || 'No outcome recorded'} /><OrderDetail label="Archived" value={order.is_archived ? `Yes${order.archived_at ? ` · ${formatDate(order.archived_at)}` : ''}` : 'No'} /><OrderDetail label="Archive reason" value={order.archive_reason || 'None'} /><OrderDetail label="Reviewed" value={formatDate(order.reviewed_at)} /><OrderDetail label="Created" value={formatDate(order.created_at)} /></dl></Modal>
 }
 
 function OrderDetail({ label, value }: { label: string; value: ReactNode }) {
@@ -108,11 +136,12 @@ function ReviewDialog({ review, onClose, onComplete }: { review: { order: Order;
       if (review.action === 'reject') await api.rejectOrder(token, review.order.id, outcomeNotes)
       if (review.action === 'fulfill') await api.fulfillOrder(token, review.order.id, outcomeNotes)
       if (review.action === 'cancel') await api.cancelOrder(token, review.order.id, outcomeNotes)
-      const outcome = review.action === 'fulfill' ? 'fulfilled' : review.action === 'cancel' ? 'canceled' : `${review.action}d`
+      if (review.action === 'archive') await api.archiveOrder(token, review.order.id, outcomeNotes)
+      const outcome = review.action === 'fulfill' ? 'fulfilled' : review.action === 'cancel' ? 'canceled' : review.action === 'archive' ? 'archived' : `${review.action}d`
       await onComplete(`Request #${review.order.id} was ${outcome}.`)
       onClose()
     } catch (caughtError) { setError(caughtError instanceof Error ? caughtError.message : 'Unable to update request.') } finally { setIsSubmitting(false) }
   }
 
-  return <Modal title={`${actionLabel} request #${review.order.id}`} onClose={onClose}><form className="space-y-5" onSubmit={submit}>{error && <p className="alert-error" role="alert">{error}</p>}<p className="text-sm leading-6 text-slate-600">This action updates the request lifecycle and may affect reserved inventory.</p><label className="field-label" htmlFor="review-notes">Outcome notes <span className="font-normal text-slate-500">(optional)</span><textarea id="review-notes" className="field-textarea" value={notes} onChange={(event) => setNotes(event.target.value)} /></label><div className="flex justify-end gap-3 border-t border-slate-100 pt-5"><button type="button" className="button-secondary" onClick={onClose}>Cancel</button><button type="submit" className="button-primary" disabled={isSubmitting}>{isSubmitting ? 'Saving…' : `${actionLabel} request`}</button></div></form></Modal>
+  return <Modal title={`${actionLabel} request #${review.order.id}`} onClose={onClose}><form className="space-y-5" onSubmit={submit}>{error && <p className="alert-error" role="alert">{error}</p>}<p className="text-sm leading-6 text-slate-600">{review.action === 'archive' ? 'This hides the request from the default queue while keeping it available when archived requests are included.' : 'This action updates the request lifecycle and may affect reserved inventory.'}</p><label className="field-label" htmlFor="review-notes">{review.action === 'archive' ? 'Archive reason' : 'Outcome notes'} <span className="font-normal text-slate-500">(optional)</span><textarea id="review-notes" className="field-textarea" value={notes} onChange={(event) => setNotes(event.target.value)} /></label><div className="flex justify-end gap-3 border-t border-slate-100 pt-5"><button type="button" className="button-secondary" onClick={onClose}>Cancel</button><button type="submit" className="button-primary" disabled={isSubmitting}>{isSubmitting ? 'Saving…' : `${actionLabel} request`}</button></div></form></Modal>
 }

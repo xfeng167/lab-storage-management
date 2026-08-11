@@ -17,6 +17,7 @@ import type {
   PendingOrder,
   RegisterPayload,
   User,
+  UserProfilePayload,
 } from '../types'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
@@ -98,6 +99,7 @@ export const api = {
   login: (payload: LoginPayload) => request<LoginResponse>('/users/login', jsonRequest('POST', payload)),
   logout: (token: string) => request<{ message: string }>('/users/logout', jsonRequest('POST', { token })),
   getCurrentUser: (token: string) => request<User>('/users/me', { headers: authenticatedHeaders(token) }),
+  updateProfile: (token: string, payload: UserProfilePayload) => request<User>('/users/me', jsonRequest('PATCH', payload, token)),
   listUsers: (token: string) => request<User[]>('/users', { headers: authenticatedHeaders(token) }),
 
   listMaterials: (token: string) => request<Material[]>('/materials', { headers: authenticatedHeaders(token) }),
@@ -126,7 +128,8 @@ export const api = {
   updateLocation: (token: string, locationId: number, payload: Partial<LocationPayload>) =>
     request<Location>(`/locations/${locationId}`, jsonRequest('PATCH', payload, token)),
 
-  listOrders: (token: string) => request<Order[]>('/orders', { headers: authenticatedHeaders(token) }),
+  listOrders: (token: string, params: { include_archived?: boolean } = {}) =>
+    request<Order[]>(withQuery('/orders', params), { headers: authenticatedHeaders(token) }),
   getOrder: (token: string, orderId: number) => request<Order>(`/orders/${orderId}`, { headers: authenticatedHeaders(token) }),
   createOrder: (token: string, payload: OrderCreatePayload) => request<Order>('/orders', jsonRequest('POST', payload, token)),
   approveOrder: (token: string, orderId: number, outcomeNotes: string | null) =>
@@ -137,6 +140,8 @@ export const api = {
     request<Order>(`/orders/${orderId}/fulfill`, jsonRequest('POST', { outcome_notes: outcomeNotes }, token)),
   cancelOrder: (token: string, orderId: number, outcomeNotes: string | null) =>
     request<Order>(`/orders/${orderId}/cancel`, jsonRequest('POST', { outcome_notes: outcomeNotes }, token)),
+  archiveOrder: (token: string, orderId: number, archiveReason: string | null) =>
+    request<Order>(`/orders/${orderId}/archive`, jsonRequest('POST', { outcome_notes: archiveReason }, token)),
 
   listLowStock: (token: string) => request<LowStockMaterial[]>('/reports/low-stock', { headers: authenticatedHeaders(token) }),
   listPendingOrders: (token: string) => request<PendingOrder[]>('/reports/pending-orders', { headers: authenticatedHeaders(token) }),
