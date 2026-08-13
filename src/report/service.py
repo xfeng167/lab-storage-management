@@ -24,8 +24,8 @@ def list_low_stock_materials(db: Session) -> list[LowStockMaterialRead]:
                 location_id
             FROM materials
             WHERE is_archived = FALSE
-            AND quantity_available <= minimum_quantity
-            ORDER BY quantity_available ASC, material_name ASC
+            AND quantity_available - quantity_reserved <= minimum_quantity
+            ORDER BY quantity_available - quantity_reserved ASC, material_name ASC
             """
         )
     ).mappings().all()
@@ -85,7 +85,7 @@ def list_recent_inventory_activity(
             JOIN materials ON materials.id = inventory_audit_logs.material_id
             WHERE 1=1
     """
-    params = {"limit": max(1, min(limit, 100))}
+    params = {"limit": limit}
 
     if user_id is not None:
         query += " AND inventory_audit_logs.user_id = :user_id"

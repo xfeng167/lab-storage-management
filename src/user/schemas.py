@@ -1,6 +1,7 @@
 import re
+from typing import Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 USERNAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{2,29}$")
@@ -81,6 +82,29 @@ class UserProfileUpdate(BaseModel):
         return picture
 
 
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+    @field_validator("current_password")
+    @classmethod
+    def current_password_must_not_be_blank(cls, value: str) -> str:
+        if not value:
+            raise ValueError("Current password is required.")
+        return value
+
+    @field_validator("new_password")
+    @classmethod
+    def new_password_must_match_policy(cls, value: str) -> str:
+        return validate_password(value)
+
+    @model_validator(mode="after")
+    def new_password_must_be_different(self) -> "PasswordChange":
+        if self.current_password == self.new_password:
+            raise ValueError("New password must be different from the current password.")
+        return self
+
+
 class UserLogin(BaseModel):
     username: str
     password: str
@@ -101,7 +125,7 @@ class UserLogin(BaseModel):
         return value
 
 class Token(BaseModel):
-    token: str
+    token: str = Field(min_length=1, max_length=512)
 
 class UserRead(BaseModel):
     id: int
@@ -110,10 +134,25 @@ class UserRead(BaseModel):
     role: str
     profile_picture: str | None = None
 
+
+class UserDirectoryRead(BaseModel):
+    id: int
+    username: str
+    email: str
+    role: Literal["viewer", "staff", "admin"]
+
+
+class UserRoleUpdate(BaseModel):
+    role: Literal["viewer", "staff", "admin"]
+
 class LoginResponse(BaseModel):
     user: UserRead
     token: str
 
 
 class LogoutResponse(BaseModel):
+    message: str
+
+
+class PasswordChangeResponse(BaseModel):
     message: str

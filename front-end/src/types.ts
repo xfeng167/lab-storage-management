@@ -8,6 +8,21 @@ export interface User {
   profile_picture: string | null
 }
 
+export type UserDirectoryEntry = Omit<User, 'profile_picture'>
+
+export interface Page<T> {
+  items: T[]
+  page: number
+  size: number
+  total: number
+  pages: number
+}
+
+export interface PaginationParams {
+  page?: number
+  size?: number
+}
+
 export interface LoginPayload {
   username: string
   password: string
@@ -21,6 +36,11 @@ export interface UserProfilePayload {
   username: string
   email: string
   profile_picture: string | null
+}
+
+export interface PasswordChangePayload {
+  current_password: string
+  new_password: string
 }
 
 export interface LoginResponse {
@@ -86,7 +106,7 @@ export interface MaterialPayload {
 
 export type MaterialUpdatePayload = Partial<Omit<MaterialPayload, 'material_code' | 'quantity_available'>>
 
-export interface MaterialSearchParams {
+export interface MaterialSearchParams extends PaginationParams {
   keyword?: string
   material_type?: string
   source?: string
@@ -179,7 +199,7 @@ export interface AuditLog {
   created_at: string | null
 }
 
-export interface AuditSearchParams {
+export interface AuditSearchParams extends PaginationParams {
   user_id?: number
   material_id?: number
   operation_type?: string
@@ -191,4 +211,8 @@ export function isAdmin(user: User | null | undefined): boolean {
 
 export function canManageOperations(user: User | null | undefined): boolean {
   return user?.role === 'admin' || user?.role === 'staff'
+}
+
+export function canRequestMaterials(user: User | null | undefined): boolean {
+  return user?.role === 'viewer' || user?.role === 'staff' || user?.role === 'admin'
 }

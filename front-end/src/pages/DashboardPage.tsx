@@ -7,7 +7,7 @@ import { LoadingState } from '../components/LoadingState'
 import { MetricCard } from '../components/MetricCard'
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
-import { canManageOperations, type InventoryActivity, type LowStockMaterial, type Material, type Order, type PendingOrder } from '../types'
+import { canManageOperations, isAdmin, type InventoryActivity, type LowStockMaterial, type Material, type Order, type PendingOrder } from '../types'
 import { formatDate, quantityLabel } from '../utils/format'
 
 interface DashboardData {
@@ -29,8 +29,8 @@ export function DashboardPage() {
     setError(null)
     try {
       const [materials, orders, lowStock, pendingOrders, activity] = await Promise.all([
-        api.listMaterials(token),
-        api.listOrders(token),
+        api.listAllMaterials(token),
+        api.listAllOrders(token),
         staffAccess ? api.listLowStock(token) : Promise.resolve([]),
         staffAccess ? api.listPendingOrders(token) : Promise.resolve([]),
         staffAccess ? api.listRecentActivity(token) : Promise.resolve([]),
@@ -48,7 +48,7 @@ export function DashboardPage() {
 
   const materials = data?.materials ?? []
   const orders = data?.orders ?? []
-  const lowStockCount = staffAccess ? data?.lowStock.length ?? 0 : materials.filter((material) => material.quantity_available <= material.minimum_quantity).length
+  const lowStockCount = staffAccess ? data?.lowStock.length ?? 0 : materials.filter((material) => material.availability_status !== 'available').length
   const totalQuantity = materials.reduce((total, material) => total + material.quantity_available, 0)
   const submittedOrders = orders.filter((order) => order.status === 'submitted').length
 
@@ -71,7 +71,7 @@ export function DashboardPage() {
           )}
         </section>
         <section className="rounded-2xl border border-slate-200 bg-white shadow-panel">
-          <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5"><div><h2 className="font-semibold text-slate-950">{staffAccess ? 'Recent inventory activity' : 'Quick actions'}</h2><p className="mt-1 text-sm text-slate-500">{staffAccess ? 'The latest recorded quantity and location changes.' : 'Start where your work needs you most.'}</p></div>{staffAccess && <Link className="link text-sm" to="/audit">Audit log</Link>}</div>
+          <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5"><div><h2 className="font-semibold text-slate-950">{staffAccess ? 'Recent inventory activity' : 'Quick actions'}</h2><p className="mt-1 text-sm text-slate-500">{staffAccess ? 'The latest recorded quantity and location changes.' : 'Start where your work needs you most.'}</p></div>{staffAccess && <Link className="link text-sm" to={isAdmin(user) ? '/audit' : '/reports'}>{isAdmin(user) ? 'Audit log' : 'View reports'}</Link>}</div>
           {staffAccess ? (data?.activity.length ? <div className="divide-y divide-slate-100">{data.activity.slice(0, 5).map((entry) => <div key={entry.id} className="px-6 py-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-slate-900">{entry.material_name}</p><p className="mt-1 text-sm text-slate-600">{entry.operation_type.replace(/_/g, ' ')}: {entry.before_value} → {entry.after_value}</p></div><p className="whitespace-nowrap text-xs text-slate-500">{formatDate(entry.created_at)}</p></div><p className="mt-2 text-xs text-slate-500">{entry.reason} · by {entry.username}</p></div>)}</div> : <EmptyState title="No inventory activity" description="Quantity and movement updates will appear here once recorded." />
           ) : <div className="grid gap-3 p-6 sm:grid-cols-2"><Link className="rounded-xl border border-slate-200 p-4 transition hover:border-teal-300 hover:bg-teal-50" to="/inventory"><p className="font-semibold text-slate-900">Explore inventory</p><p className="mt-1 text-sm text-slate-600">Find material availability and storage details.</p></Link><Link className="rounded-xl border border-slate-200 p-4 transition hover:border-teal-300 hover:bg-teal-50" to="/requests"><p className="font-semibold text-slate-900">Manage requests</p><p className="mt-1 text-sm text-slate-600">Review your submitted and approved requests.</p></Link></div>}
         </section>

@@ -1,16 +1,26 @@
 from datetime import datetime
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
+
+
+OptionalNotes = Annotated[str, StringConstraints(strip_whitespace=True, max_length=5_000)] | None
+ArchiveReason = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=5_000)]
+OrderStatus = Literal["submitted", "approved", "rejected", "fulfilled", "canceled"]
 
 
 class OrderCreate(BaseModel):
-    material_id: int
+    material_id: int = Field(gt=0)
     requested_quantity: int = Field(gt=0)
-    request_notes: str | None = None
+    request_notes: OptionalNotes = None
 
 
 class OrderReview(BaseModel):
-    outcome_notes: str | None = None
+    outcome_notes: OptionalNotes = None
+
+
+class OrderArchive(BaseModel):
+    reason: ArchiveReason
 
 
 class OrderRead(BaseModel):
@@ -19,7 +29,7 @@ class OrderRead(BaseModel):
     material_id: int
     requested_quantity: int
     reserved_quantity: int
-    status: str
+    status: OrderStatus
     request_notes: str | None = None
     reviewed_by_user_id: int | None = None
     reviewed_at: datetime | None = None

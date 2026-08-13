@@ -1,7 +1,3 @@
-import src
-from src.db.connection import get_db
-
-
 from fastapi.params import Depends
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -9,6 +5,8 @@ from sqlalchemy.orm import Session
 
 from datetime import datetime, timedelta
 
+from src.core.config import settings
+from src.db.connection import get_db
 from src.user.schemas import UserRead
 from src.user.service import get_user
 from src.utils.constant import ROLE_ADMIN, ROLE_STAFF
@@ -31,7 +29,14 @@ def verify_token(token: str, db: Session = Depends(get_db)) -> tuple[bool, int |
         return False, None
     if result["user_id"] is None:
         return False, None
-    if result["created_at"] < (datetime.utcnow() - timedelta(hours=1)):
+    if result["created_at"] < (
+        datetime.utcnow() - timedelta(minutes=settings.token_ttl_minutes)
+    ):
+        db.execute(
+            text("DELETE FROM token_table WHERE token = :token"),
+            {"token": token},
+        )
+        db.commit()
         return False, None
     return True, user_id
 
@@ -40,5 +45,4 @@ def get_user_from_token(token: str, db: Session = Depends(get_db)) -> UserRead |
     if not result:
         return None
     return get_user(db, user_id)
-
 

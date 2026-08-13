@@ -55,12 +55,14 @@ export function AppShell() {
             </nav>
             <div className="h-7 border-l border-slate-200" />
             <div className="flex items-center gap-3">
-              <NavLink to="/account" className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-lab-50 text-sm font-semibold text-lab-800 ring-1 ring-slate-200 transition hover:ring-teal-300" aria-label="Open account profile">
-                {user?.profile_picture ? <img className="h-full w-full object-cover" src={user.profile_picture} alt="" /> : <span>{initials(user?.username)}</span>}
-              </NavLink>
-              <div className="text-right text-xs leading-5 text-slate-500">
-                <NavLink to="/account" className="block font-semibold text-slate-700 hover:text-lab-800">{user?.username}</NavLink>
-                <span className="mr-2">{formatRole(user?.role ?? '')}</span>
+              <div className="flex min-w-12 flex-col items-center gap-1" role="group" aria-label="Account identity">
+                <NavLink to="/account" className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-lab-50 text-sm font-semibold text-lab-800 ring-1 ring-slate-200 transition hover:ring-teal-300" aria-label="Open account profile">
+                  {user?.profile_picture ? <img className="h-full w-full object-cover" src={user.profile_picture} alt="" /> : <span>{initials(user?.username)}</span>}
+                </NavLink>
+                <NavLink to="/account" className="max-w-24 truncate text-xs font-semibold leading-none text-slate-700 hover:text-lab-800">{user?.username}</NavLink>
+              </div>
+              <div className="text-left text-xs leading-5 text-slate-500">
+                <span className="block">{formatRole(user?.role ?? '')}</span>
                 <button type="button" className="font-medium text-teal-700 hover:text-teal-800" onClick={handleLogout}>Sign out</button>
               </div>
             </div>

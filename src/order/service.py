@@ -1,9 +1,12 @@
+import json
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.order.schemas import OrderCreate, OrderRead, OrderReview
+from src.core.pagination import Page, build_page, page_offset
+from src.order.schemas import OrderArchive, OrderCreate, OrderRead, OrderReview
 from src.user.schemas import UserRead
-from src.utils.constant import ROLE_ADMIN
+from src.utils.constant import PERMISSION_ORDER_READ_ALL, role_has_permission
 
 
 ORDER_STATUS_SUBMITTED = "submitted"
@@ -11,6 +14,11 @@ ORDER_STATUS_APPROVED = "approved"
 ORDER_STATUS_REJECTED = "rejected"
 ORDER_STATUS_FULFILLED = "fulfilled"
 ORDER_STATUS_CANCELED = "canceled"
+
+AUDIT_ORDER_RESERVATION_CREATED = "order_reservation_created"
+AUDIT_ORDER_FULFILLED = "order_fulfilled"
+AUDIT_ORDER_RESERVATION_RELEASED = "order_reservation_released"
+AUDIT_ORDER_ARCHIVED = "order_archived"
 
 
 def _row_to_order(row) -> OrderRead | None:
@@ -25,17 +33,91 @@ def _outcome_notes(payload: OrderReview | None) -> str | None:
     return payload.outcome_notes
 
 
+def _inventory_audit_value(
+    quantity_available: int,
+    quantity_reserved: int,
+) -> str:
+    return json.dumps(
+        {
+            "quantity_available": quantity_available,
+            "quantity_reserved": quantity_reserved,
+        },
+        separators=(",", ":"),
+    )
+
+
+def _order_audit_reason(
+    order_id: int,
+    action: str,
+    payload: OrderReview | None,
+) -> str:
+    reason = f"Order #{order_id} {action}."
+    notes = _outcome_notes(payload)
+    return f"{reason} Outcome notes: {notes}" if notes else reason
+
+
+def _log_order_inventory_audit(
+    db: Session,
+    *,
+    user_id: int,
+    material_id: int,
+    operation_type: str,
+    before_available: int,
+    before_reserved: int,
+    after_available: int,
+    after_reserved: int,
+    reason: str,
+) -> None:
+    db.execute(
+        text(
+            """
+            INSERT INTO inventory_audit_logs (
+                user_id,
+                material_id,
+                operation_type,
+                before_value,
+                after_value,
+                reason
+            )
+            VALUES (
+                :user_id,
+                :material_id,
+                :operation_type,
+                :before_value,
+                :after_value,
+                :reason
+            )
+            """
+        ),
+        {
+            "user_id": user_id,
+            "material_id": material_id,
+            "operation_type": operation_type,
+            "before_value": _inventory_audit_value(
+                before_available,
+                before_reserved,
+            ),
+            "after_value": _inventory_audit_value(
+                after_available,
+                after_reserved,
+            ),
+            "reason": reason,
+        },
+    )
+
+
 def _can_access_order(order_row, current_user: UserRead) -> bool:
     return (
-        current_user.role == ROLE_ADMIN
+        role_has_permission(current_user.role, PERMISSION_ORDER_READ_ALL)
         or order_row["requested_by_user_id"] == current_user.id
     )
 
 
-def _get_order_row(db: Session, order_id: int):
+def _get_order_row(db: Session, order_id: int, *, for_update: bool = False):
+    lock_clause = "FOR UPDATE" if for_update else ""
     return db.execute(
         text(
-            """
+            f"""
             SELECT
                 id,
                 requested_by_user_id,
@@ -55,19 +137,22 @@ def _get_order_row(db: Session, order_id: int):
                 updated_at
             FROM orders
             WHERE id = :order_id
+            {lock_clause}
             """
         ),
         {"order_id": order_id},
     ).mappings().first()
 
 
-def _get_material_inventory(db: Session, material_id: int):
+def _get_material_inventory(db: Session, material_id: int, *, for_update: bool = False):
+    lock_clause = "FOR UPDATE" if for_update else ""
     return db.execute(
         text(
-            """
+            f"""
             SELECT quantity_available, quantity_reserved, is_archived
             FROM materials
             WHERE id = :material_id
+            {lock_clause}
             """
         ),
         {"material_id": material_id},
@@ -79,11 +164,14 @@ def create_order(
     current_user: UserRead,
     payload: OrderCreate,
 ) -> tuple[OrderRead | None, str | None]:
-    material = _get_material_inventory(db, payload.material_id)
+    material = _get_material_inventory(db, payload.material_id, for_update=True)
     if material is None:
         return None, "material_not_found"
     if material["is_archived"]:
         return None, "archived_material"
+    available_to_order = material["quantity_available"] - material["quantity_reserved"]
+    if available_to_order < payload.requested_quantity:
+        return None, "insufficient_quantity"
 
     db.execute(
         text(
@@ -123,7 +211,9 @@ def list_orders(
     requested_by_user_id: int | None = None,
     reviewed_by_user_id: int | None = None,
     include_archived: bool = False,
-) -> list[OrderRead]:
+    page: int = 1,
+    size: int = 25,
+) -> Page[OrderRead]:
     query = """
         SELECT
             id,
@@ -147,7 +237,7 @@ def list_orders(
     conditions = []
     params = {}
 
-    if current_user.role != ROLE_ADMIN:
+    if not role_has_permission(current_user.role, PERMISSION_ORDER_READ_ALL):
         conditions.append("requested_by_user_id = :current_user_id")
         params["current_user_id"] = current_user.id
     elif requested_by_user_id is not None:
@@ -169,12 +259,24 @@ def list_orders(
         conditions.append("reviewed_by_user_id = :reviewed_by_user_id")
         params["reviewed_by_user_id"] = reviewed_by_user_id
 
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
+    where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+    query += where_clause
 
-    query += " ORDER BY id DESC"
-    rows = db.execute(text(query), params).mappings().all()
-    return [OrderRead(**row) for row in rows]
+    total = db.execute(
+        text(f"SELECT COUNT(*) FROM orders{where_clause}"),
+        params,
+    ).scalar_one()
+    query += " ORDER BY id DESC LIMIT :size OFFSET :offset"
+    rows = db.execute(
+        text(query),
+        {**params, "size": size, "offset": page_offset(page, size)},
+    ).mappings().all()
+    return build_page(
+        [OrderRead(**row) for row in rows],
+        page=page,
+        size=size,
+        total=total,
+    )
 
 
 def get_order(
@@ -194,13 +296,13 @@ def approve_order(
     current_user: UserRead,
     payload: OrderReview | None = None,
 ) -> tuple[OrderRead | None, str | None]:
-    order = _get_order_row(db, order_id)
+    order = _get_order_row(db, order_id, for_update=True)
     if order is None:
         return None, "not_found"
     if order["status"] != ORDER_STATUS_SUBMITTED:
         return None, "invalid_status"
 
-    material = _get_material_inventory(db, order["material_id"])
+    material = _get_material_inventory(db, order["material_id"], for_update=True)
     if material is None:
         return None, "material_not_found"
     if material["is_archived"]:
@@ -244,9 +346,21 @@ def approve_order(
             "outcome_notes": _outcome_notes(payload),
         },
     )
+    _log_order_inventory_audit(
+        db,
+        user_id=current_user.id,
+        material_id=order["material_id"],
+        operation_type=AUDIT_ORDER_RESERVATION_CREATED,
+        before_available=material["quantity_available"],
+        before_reserved=material["quantity_reserved"],
+        after_available=material["quantity_available"],
+        after_reserved=material["quantity_reserved"] + order["requested_quantity"],
+        reason=_order_audit_reason(order_id, "approved; reservation created", payload),
+    )
+    updated_order = _row_to_order(_get_order_row(db, order_id))
     db.commit()
 
-    return _row_to_order(_get_order_row(db, order_id)), None
+    return updated_order, None
 
 
 def reject_order(
@@ -255,7 +369,7 @@ def reject_order(
     current_user: UserRead,
     payload: OrderReview | None = None,
 ) -> tuple[OrderRead | None, str | None]:
-    order = _get_order_row(db, order_id)
+    order = _get_order_row(db, order_id, for_update=True)
     if order is None:
         return None, "not_found"
     if order["status"] != ORDER_STATUS_SUBMITTED:
@@ -267,6 +381,7 @@ def reject_order(
             UPDATE orders
             SET
                 status = :status,
+                reserved_quantity = 0,
                 reviewed_by_user_id = :reviewed_by_user_id,
                 reviewed_at = CURRENT_TIMESTAMP,
                 outcome_notes = :outcome_notes
@@ -280,9 +395,10 @@ def reject_order(
             "outcome_notes": _outcome_notes(payload),
         },
     )
+    updated_order = _row_to_order(_get_order_row(db, order_id))
     db.commit()
 
-    return _row_to_order(_get_order_row(db, order_id)), None
+    return updated_order, None
 
 
 def fulfill_order(
@@ -291,13 +407,13 @@ def fulfill_order(
     current_user: UserRead,
     payload: OrderReview | None = None,
 ) -> tuple[OrderRead | None, str | None]:
-    order = _get_order_row(db, order_id)
+    order = _get_order_row(db, order_id, for_update=True)
     if order is None:
         return None, "not_found"
     if order["status"] != ORDER_STATUS_APPROVED:
         return None, "invalid_status"
 
-    material = _get_material_inventory(db, order["material_id"])
+    material = _get_material_inventory(db, order["material_id"], for_update=True)
     if material is None:
         return None, "material_not_found"
     if material["is_archived"]:
@@ -330,6 +446,7 @@ def fulfill_order(
             UPDATE orders
             SET
                 status = :status,
+                reserved_quantity = 0,
                 reviewed_by_user_id = :reviewed_by_user_id,
                 reviewed_at = CURRENT_TIMESTAMP,
                 outcome_notes = :outcome_notes
@@ -343,9 +460,21 @@ def fulfill_order(
             "outcome_notes": _outcome_notes(payload),
         },
     )
+    _log_order_inventory_audit(
+        db,
+        user_id=current_user.id,
+        material_id=order["material_id"],
+        operation_type=AUDIT_ORDER_FULFILLED,
+        before_available=material["quantity_available"],
+        before_reserved=material["quantity_reserved"],
+        after_available=material["quantity_available"] - order["reserved_quantity"],
+        after_reserved=material["quantity_reserved"] - order["reserved_quantity"],
+        reason=_order_audit_reason(order_id, "fulfilled", payload),
+    )
+    updated_order = _row_to_order(_get_order_row(db, order_id))
     db.commit()
 
-    return _row_to_order(_get_order_row(db, order_id)), None
+    return updated_order, None
 
 
 def cancel_order(
@@ -354,14 +483,14 @@ def cancel_order(
     current_user: UserRead,
     payload: OrderReview | None = None,
 ) -> tuple[OrderRead | None, str | None]:
-    order = _get_order_row(db, order_id)
+    order = _get_order_row(db, order_id, for_update=True)
     if order is None or not _can_access_order(order, current_user):
         return None, "not_found"
     if order["status"] not in {ORDER_STATUS_SUBMITTED, ORDER_STATUS_APPROVED}:
         return None, "invalid_status"
 
     if order["status"] == ORDER_STATUS_APPROVED and order["reserved_quantity"] > 0:
-        material = _get_material_inventory(db, order["material_id"])
+        material = _get_material_inventory(db, order["material_id"], for_update=True)
         if material is None:
             return None, "material_not_found"
         if material["quantity_reserved"] < order["reserved_quantity"]:
@@ -380,6 +509,21 @@ def cancel_order(
                 "reserved_quantity": order["reserved_quantity"],
             },
         )
+        _log_order_inventory_audit(
+            db,
+            user_id=current_user.id,
+            material_id=order["material_id"],
+            operation_type=AUDIT_ORDER_RESERVATION_RELEASED,
+            before_available=material["quantity_available"],
+            before_reserved=material["quantity_reserved"],
+            after_available=material["quantity_available"],
+            after_reserved=material["quantity_reserved"] - order["reserved_quantity"],
+            reason=_order_audit_reason(
+                order_id,
+                "canceled; reservation released",
+                payload,
+            ),
+        )
 
     db.execute(
         text(
@@ -387,6 +531,7 @@ def cancel_order(
             UPDATE orders
             SET
                 status = :status,
+                reserved_quantity = 0,
                 reviewed_by_user_id = :reviewed_by_user_id,
                 reviewed_at = CURRENT_TIMESTAMP,
                 outcome_notes = :outcome_notes
@@ -400,22 +545,29 @@ def cancel_order(
             "outcome_notes": _outcome_notes(payload),
         },
     )
+    updated_order = _row_to_order(_get_order_row(db, order_id))
     db.commit()
 
-    return _row_to_order(_get_order_row(db, order_id)), None
+    return updated_order, None
 
 
 def archive_order(
     db: Session,
     order_id: int,
     current_user: UserRead,
-    payload: OrderReview | None = None,
+    payload: OrderArchive,
 ) -> tuple[OrderRead | None, str | None]:
-    order = _get_order_row(db, order_id)
+    order = _get_order_row(db, order_id, for_update=True)
     if order is None or not _can_access_order(order, current_user):
         return None, "not_found"
+    if order["is_archived"]:
+        return None, "already_archived"
     if order["status"] in {ORDER_STATUS_SUBMITTED, ORDER_STATUS_APPROVED}:
         return None, "invalid_status"
+
+    material = _get_material_inventory(db, order["material_id"], for_update=True)
+    if material is None:
+        return None, "material_not_found"
 
     db.execute(
         text(
@@ -432,9 +584,21 @@ def archive_order(
         {
             "order_id": order_id,
             "archived_by_user_id": current_user.id,
-            "archive_reason": _outcome_notes(payload),
+            "archive_reason": payload.reason,
         },
     )
+    _log_order_inventory_audit(
+        db,
+        user_id=current_user.id,
+        material_id=order["material_id"],
+        operation_type=AUDIT_ORDER_ARCHIVED,
+        before_available=material["quantity_available"],
+        before_reserved=material["quantity_reserved"],
+        after_available=material["quantity_available"],
+        after_reserved=material["quantity_reserved"],
+        reason=f"Order #{order_id} archived. Reason: {payload.reason}",
+    )
+    updated_order = _row_to_order(_get_order_row(db, order_id))
     db.commit()
 
-    return _row_to_order(_get_order_row(db, order_id)), None
+    return updated_order, None

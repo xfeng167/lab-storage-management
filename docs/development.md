@@ -1,7 +1,7 @@
 # Development Guide
 
-This project is intentionally small at the beginning. The first goal is to learn how a FastAPI
-project is organized, how routes call service functions, and how the service layer talks to MySQL.
+This guide covers the working FastAPI, React, MySQL, and Alembic development
+workflow.
 
 ## 1. Install Dependencies
 
@@ -9,161 +9,66 @@ project is organized, how routes call service functions, and how the service lay
 uv sync --extra dev
 ```
 
-## 2. Start MySQL
+## 2. Start the Development Database
 
 ```bash
-docker compose -f docker/docker-compose.yaml up -d
+docker compose -f docker/docker-compose.dev.yaml up -d
 ```
 
-The default local database settings are:
+The explicitly development-only Compose file publishes MySQL and Adminer and
+uses disposable example credentials. It also provisions the empty
+`lab_storage_test_db` database and grants the non-root application user access.
+Production uses `docker/docker-compose.yaml`, external Docker secrets, and no
+published database or Adminer port.
 
-```text
-Database: lab_storage_db
-User: lab_user
-Password: lab_password
-Port: 3306
-Server: mysql
-http://localhost:8080/?server=mysql&username=lab_user&db=lab_storage_db
+Set local application and test connections in your shell or untracked `.env`:
+
+```bash
+export DATABASE_URL='mysql+pymysql://lab_user:lab_password@localhost:3306/lab_storage_db'
+export TEST_DATABASE_URL='mysql+pymysql://lab_user:lab_password@localhost:3306/lab_storage_test_db'
 ```
 
-## 3. Create Learning Tables
+## 3. Apply Database Migrations
 
-Create the simple table used by the example CRUD module:
+Alembic revisions in `migrations/versions/` are the single schema source for
+development, test, and production:
 
-```sql
-CREATE TABLE IF NOT EXISTS test_table (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL
-);
+```bash
+uv run alembic upgrade head
 ```
 
-Create the first user table for the user module:
+Run this command as a deployment step before starting new application instances.
+Application startup intentionally does not create or alter database objects. To
+create a future migration:
 
-```sql
-CREATE TABLE IF NOT EXISTS users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(80) NOT NULL UNIQUE,
-    email VARCHAR(255) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(20) NOT NULL DEFAULT 'viewer',
-    profile_picture MEDIUMTEXT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+```bash
+uv run alembic revision -m "describe the schema change"
 ```
 
-If your local `users` table already exists, add the profile picture column:
+Migrations own table definitions, status/quantity checks, indexes, and foreign
+keys. The current schema rejects invalid roles, QC/order statuses, negative or
+inconsistent reservations, and orphaned relationships. Relationship deletes are
+explicitly restricted. Query indexes cover material search fields, order status
+and ownership filters, and audit time/filter combinations.
 
-```sql
-ALTER TABLE users ADD COLUMN profile_picture MEDIUMTEXT NULL;
+Legacy upgrades normalize the known safe inconsistency (reservations on
+non-approved orders) and fail with a named-field diagnostic when other invalid
+domain values would make a new constraint unsafe to apply.
+
+### Bootstrap the first administrator
+
+For a new environment, inject one-time deployment secrets and run:
+
+```bash
+export BOOTSTRAP_ADMIN_USERNAME='initial_admin'
+export BOOTSTRAP_ADMIN_EMAIL='initial_admin@example.com'
+export BOOTSTRAP_ADMIN_PASSWORD='replace-with-a-secret-password1'
+uv run python -m src.cli bootstrap-admin
 ```
 
-Create the token table used by login/logout:
-
-```sql
-CREATE TABLE IF NOT EXISTS token_table (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    token VARCHAR(255) NOT NULL UNIQUE,
-    user_id INT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-```
-
-Create the first materials table:
-
-The application validates `location_id` against the `locations` table when a material is created or updated.
-
-```sql
-CREATE TABLE IF NOT EXISTS materials (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    material_code VARCHAR(80) NOT NULL UNIQUE,
-    material_name VARCHAR(255) NOT NULL,
-    material_type VARCHAR(80) NOT NULL,
-    description TEXT,
-    source VARCHAR(255),
-    quantity_available INT NOT NULL DEFAULT 0,
-    quantity_reserved INT NOT NULL DEFAULT 0,
-    unit VARCHAR(40) NOT NULL,
-    minimum_quantity INT NOT NULL DEFAULT 0,
-    availability_status VARCHAR(40) NOT NULL DEFAULT 'available',
-    qc_status VARCHAR(40) NOT NULL DEFAULT 'pending',
-    storage_condition VARCHAR(120),
-    location_id INT,
-    is_archived BOOLEAN NOT NULL DEFAULT FALSE,
-    archived_at TIMESTAMP NULL,
-    archived_by_user_id INT NULL,
-    archive_reason TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-```
-
-Create the first locations table:
-
-```sql
-CREATE TABLE IF NOT EXISTS locations (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(120) NOT NULL,
-    location_type VARCHAR(80) NOT NULL,
-    parent_location_id INT NULL,
-    temperature_zone VARCHAR(80),
-    description TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-```
-
-Create the inventory audit table:
-
-```sql
-CREATE TABLE IF NOT EXISTS inventory_audit_logs (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    material_id INT NOT NULL,
-    operation_type VARCHAR(80) NOT NULL,
-    before_value VARCHAR(255) NOT NULL,
-    after_value VARCHAR(255) NOT NULL,
-    reason TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    FOREIGN KEY (material_id) REFERENCES materials(id)
-);
-```
-
-Create the first orders table:
-
-```sql
-CREATE TABLE IF NOT EXISTS orders (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    requested_by_user_id INT NOT NULL,
-    material_id INT NOT NULL,
-    requested_quantity INT NOT NULL,
-    reserved_quantity INT NOT NULL DEFAULT 0,
-    status VARCHAR(40) NOT NULL DEFAULT 'submitted',
-    request_notes TEXT,
-    reviewed_by_user_id INT NULL,
-    reviewed_at TIMESTAMP NULL,
-    outcome_notes TEXT,
-    is_archived BOOLEAN NOT NULL DEFAULT FALSE,
-    archived_at TIMESTAMP NULL,
-    archived_by_user_id INT NULL,
-    archive_reason TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (requested_by_user_id) REFERENCES users(id),
-    FOREIGN KEY (material_id) REFERENCES materials(id),
-    FOREIGN KEY (reviewed_by_user_id) REFERENCES users(id)
-);
-```
-
-If your local `orders` table already exists, add the archive columns:
-
-```sql
-ALTER TABLE orders ADD COLUMN is_archived BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE orders ADD COLUMN archived_at TIMESTAMP NULL;
-ALTER TABLE orders ADD COLUMN archived_by_user_id INT NULL;
-ALTER TABLE orders ADD COLUMN archive_reason TEXT;
-```
+The command creates one administrator and refuses later bootstrap attempts while
+an admin exists. Use `PATCH /users/{id}/role` for subsequent role assignments;
+the API prevents demotion of the last admin.
 
 ## 4. Run the API
 
@@ -177,15 +82,21 @@ Open the API docs:
 http://127.0.0.1:8000/docs
 ```
 
+The generated schema documents bearer authentication, the viewer/staff/admin
+policy, order stock validation, and which QC/shipment modules are still planned.
+
 ## 5. Run Tests
 
 ```bash
 uv run pytest
 ```
 
-The test suite uses a separate MySQL database named `lab_storage_test_db`.
-Pytest creates the database and tables automatically, then clears the test tables before each test.
-This keeps automated tests from changing your normal local development database, `lab_storage_db`.
+The test suite requires `TEST_DATABASE_URL` to identify a dedicated database.
+At session start it resets that schema and runs `alembic upgrade head`; there is
+no second handwritten test schema. The database itself must already exist so
+pytest never needs or stores root credentials. As a guard against destructive
+misconfiguration, the database name must contain `test` and the URL cannot use
+the MySQL root account.
 
 ## 6. Try the First Endpoints
 
@@ -193,16 +104,11 @@ Health check:
 
 ```http
 GET /health
+GET /health/ready
 ```
 
-Example CRUD table:
-
-```http
-GET /test-table
-POST /test-table
-PATCH /test-table/{item_id}
-DELETE /test-table/{item_id}
-```
+`/health` is process liveness. `/health/ready` also verifies database
+connectivity and that the applied Alembic revision matches the application.
 
 User module:
 
@@ -236,6 +142,15 @@ Audit module:
 GET /audit-logs
 ```
 
+Order approval, fulfillment, and cancellation of an approved order write audit
+records for their inventory effects. Each record captures available and reserved
+quantities before and after the transition, and commits in the same database
+transaction as the order and inventory updates.
+Material archive and restore also write audit records. Restore clears every archive
+metadata field from the material row; the immutable audit entry retains the history.
+Archiving a terminal order requires a reason, writes `order_archived`, and cannot
+be repeated or restored.
+
 Location module:
 
 ```http
@@ -257,6 +172,37 @@ POST /orders/{order_id}/fulfill
 POST /orders/{order_id}/cancel
 ```
 
+Order stock validation policy:
+
+- `POST /orders` validates a positive requested quantity, an existing,
+  non-archived material, and sufficient unreserved stock. It does not reserve
+  stock.
+- `POST /orders/{order_id}/approve` performs the authoritative availability check
+  under row locks. Unreserved stock is `quantity_available - quantity_reserved`.
+  An insufficient order remains `submitted` and inventory is unchanged.
+- `POST /orders/{order_id}/fulfill` verifies the approved reservation is still
+  covered by both available and reserved quantities before deducting it. A failed
+  consistency check leaves the order `approved` and inventory unchanged.
+- Canceling a `submitted` order does not inspect inventory. Canceling an `approved`
+  order verifies and releases its reservation. Viewers and staff may cancel only
+  their own orders; admins may cancel any eligible order.
+- A material cannot be archived while an approved order or reserved quantity
+  exists. Fulfill or cancel the order first. Archived materials cannot be ordered
+  or fulfilled. Cancellation remains available as a recovery path for a legacy
+  approved order attached to an archived material and releases its reservation.
+
+Role policy:
+
+- Viewer: read materials/locations; create, view, cancel, and archive owned orders.
+- Staff: viewer permissions plus material/location metadata management and reports.
+- Admin: staff permissions plus inventory/archive operations, all-order review,
+  audit logs, and the admin user list.
+
+Location parent changes run under a database transaction lock, walk the proposed
+parent's ancestor chain, and return `409` if the change would introduce either a
+direct or indirect cycle. This prevents concurrent changes from jointly creating
+a cycle.
+
 Order list supports these optional query parameters:
 
 ```text
@@ -264,6 +210,8 @@ status
 material_id
 requested_by_user_id
 reviewed_by_user_id
+page
+size
 ```
 
 Report module:
@@ -286,6 +234,8 @@ availability_status
 location_id
 low_stock
 include_archived
+page
+size
 ```
 
 Recent inventory activity report supports these optional query parameters:
@@ -303,6 +253,22 @@ Audit logs support these optional query parameters:
 user_id
 material_id
 operation_type
+page
+size
+```
+
+`GET /materials`, `GET /materials/search`, `GET /orders`, `GET /locations`,
+`GET /audit-logs`, and `GET /users` use page-number pagination. `page` starts at 1, `size` defaults
+to 25 and is capped at 100. Responses have this shape:
+
+```json
+{
+  "items": [],
+  "page": 1,
+  "size": 25,
+  "total": 0,
+  "pages": 0
+}
 ```
 
 Protected endpoints use the authorization header:
@@ -310,6 +276,21 @@ Protected endpoints use the authorization header:
 ```http
 Authorization: Bearer <token>
 ```
+
+Every error, including authentication, authorization, validation, routing, and
+business-rule failures, uses this response structure:
+
+```json
+{
+  "error": {
+    "code": "MATERIAL_NOT_FOUND",
+    "message": "Material not found"
+  }
+}
+```
+
+Clients should branch on `error.code`, not on the human-readable message.
+Validation responses also include `error.details` with field-level entries.
 
 ## Project Shape
 
@@ -320,12 +301,12 @@ src/
   audit/               # Admin inventory audit log review endpoints.
   core/config.py       # Reads environment configuration.
   db/connection.py     # Creates the SQLAlchemy database session.
+  ../migrations/       # Alembic schema source used in every environment.
   health/router.py     # Minimal API health check.
   location/            # Storage location CRUD endpoints.
   material/            # Material CRUD, search, archive, and restore endpoints.
   order/               # Material request, approval, fulfillment, and cancellation endpoints.
   report/              # Dashboard-style inventory and order report endpoints.
-  test_table/          # Example CRUD module for the existing test_table.
   user/                # User registration, login, logout, and profile endpoints.
   utils/security.py    # Password hashing and token helper functions.
   utils/constant.py    # Shared role constants.
