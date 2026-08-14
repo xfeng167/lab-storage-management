@@ -20,7 +20,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health_router)
-    app.include_router(test_table_router, prefix="/test-table", tags=["test-table"])
+    app.include_router(test_table_router, prefix="/test-table", tags=["test-table", "deprecated"])
     app.include_router(user_router, prefix="/users", tags=["users"])
     app.include_router(material_router, prefix="/materials", tags=["materials"])
     app.include_router(location_router, prefix="/locations", tags=["locations"])
