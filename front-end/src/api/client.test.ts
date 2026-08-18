@@ -45,10 +45,31 @@ describe('API client', () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body as string)).toEqual({ username: 'lina_new', email: 'new@example.com', profile_picture: 'data:image/png;base64,abc' })
   })
 
-  it('returns the backend detail for failed requests', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ detail: 'Invalid username or password' }, 401)))
+  it('changes the signed-in user password', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({ message: 'Password updated successfully.' }))
+    vi.stubGlobal('fetch', fetchMock)
 
-    await expect(api.login({ username: 'lina', password: 'wrong' })).rejects.toEqual(expect.objectContaining({ status: 401, message: 'Invalid username or password' }))
+    await api.changePassword('stored-token', { current_password: 'password123', new_password: 'newpassword456' })
+
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/users/me/password')
+    expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({ method: 'POST' }))
+    expect(fetchMock.mock.calls[0][1].headers).toEqual(expect.objectContaining({ Authorization: 'Bearer stored-token' }))
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string)).toEqual({ current_password: 'password123', new_password: 'newpassword456' })
+  })
+
+  it('returns the backend business error code and message for failed requests', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({
+      error: {
+        code: 'INVALID_CREDENTIALS',
+        message: 'Invalid username or password',
+      },
+    }, 401)))
+
+    await expect(api.login({ username: 'lina', password: 'wrong' })).rejects.toEqual(expect.objectContaining({
+      status: 401,
+      code: 'INVALID_CREDENTIALS',
+      message: 'Invalid username or password',
+    }))
   })
 
   it('serializes material search filters and inventory operations', async () => {
@@ -57,10 +78,10 @@ describe('API client', () => {
       .mockResolvedValueOnce(response({ id: 2 }))
     vi.stubGlobal('fetch', fetchMock)
 
-    await api.searchMaterials('stored-token', { keyword: 'Metformin USP', qc_status: 'pending', location_id: 4, include_archived: true })
+    await api.searchMaterials('stored-token', { keyword: 'Metformin USP', qc_status: 'pending', location_id: 4, include_archived: true, page: 2, size: 50 })
     await api.checkInMaterial('stored-token', 2, 5, 'Received shipment')
 
-    expect(fetchMock.mock.calls[0][0]).toBe('/api/materials/search?keyword=Metformin+USP&qc_status=pending&location_id=4&include_archived=true')
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/materials/search?keyword=Metformin+USP&qc_status=pending&location_id=4&include_archived=true&page=2&size=50')
     expect(fetchMock.mock.calls[0][1].headers).toEqual(expect.objectContaining({ Authorization: 'Bearer stored-token' }))
     expect(fetchMock.mock.calls[1][0]).toBe('/api/materials/2/check-in')
     expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({ quantity: 5, reason: 'Received shipment' })
@@ -75,12 +96,12 @@ describe('API client', () => {
 
     await api.approveOrder('admin-token', 3, 'Approved for use')
     await api.archiveOrder('admin-token', 3, 'No longer needed in queue')
-    await api.listAuditLogs('admin-token', { user_id: 1, operation_type: 'check_in' })
+    await api.listAuditLogs('admin-token', { user_id: 1, operation_type: 'check_in', page: 3, size: 25 })
 
     expect(fetchMock.mock.calls[0][0]).toBe('/api/orders/3/approve')
     expect(JSON.parse(fetchMock.mock.calls[0][1].body as string)).toEqual({ outcome_notes: 'Approved for use' })
     expect(fetchMock.mock.calls[1][0]).toBe('/api/orders/3/archive')
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({ outcome_notes: 'No longer needed in queue' })
-    expect(fetchMock.mock.calls[2][0]).toBe('/api/audit-logs?user_id=1&operation_type=check_in')
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({ reason: 'No longer needed in queue' })
+    expect(fetchMock.mock.calls[2][0]).toBe('/api/audit-logs?user_id=1&operation_type=check_in&page=3&size=25')
   })
 })

@@ -1,6 +1,7 @@
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from src.core.pagination import Page, build_page, page_offset
 from src.material.schemas import (
     MaterialCreate,
     MaterialMove,
@@ -9,6 +10,15 @@ from src.material.schemas import (
     QuantityAdjustment,
     QuantityChange,
 )
+
+
+AVAILABILITY_STATUS_SQL = """
+    CASE
+        WHEN quantity_available - quantity_reserved <= 0 THEN 'unavailable'
+        WHEN quantity_available - quantity_reserved <= minimum_quantity THEN 'low_stock'
+        ELSE 'available'
+    END
+"""
 
 
 def _location_exists(db: Session, location_id: int | None) -> bool:
@@ -63,10 +73,17 @@ def _log_inventory_audit(
     )
 
 
-def list_materials(db: Session) -> list[MaterialRead]:
+def list_materials(
+    db: Session,
+    page: int = 1,
+    size: int = 25,
+) -> Page[MaterialRead]:
+    total = db.execute(
+        text("SELECT COUNT(*) FROM materials WHERE is_archived = FALSE")
+    ).scalar_one()
     rows = db.execute(
         text(
-            """
+            f"""
             SELECT
                 id,
                 material_code,
@@ -78,7 +95,7 @@ def list_materials(db: Session) -> list[MaterialRead]:
                 quantity_reserved,
                 unit,
                 minimum_quantity,
-                availability_status,
+                {AVAILABILITY_STATUS_SQL} AS availability_status,
                 qc_status,
                 storage_condition,
                 location_id,
@@ -91,11 +108,18 @@ def list_materials(db: Session) -> list[MaterialRead]:
             FROM materials
             WHERE is_archived = FALSE
             ORDER BY id
+            LIMIT :size OFFSET :offset
             """
-        )
+        ),
+        {"size": size, "offset": page_offset(page, size)},
     ).mappings().all()
 
-    return [MaterialRead(**row) for row in rows]
+    return build_page(
+        [MaterialRead(**row) for row in rows],
+        page=page,
+        size=size,
+        total=total,
+    )
 
 
 def adjust_quantity(
@@ -110,6 +134,7 @@ def adjust_quantity(
             SELECT quantity_available, quantity_reserved, is_archived
             FROM materials
             WHERE id = :material_id
+            FOR UPDATE
             """
         ),
         {"material_id": material_id},
@@ -144,9 +169,10 @@ def adjust_quantity(
         str(after_quantity),
         payload.reason,
     )
+    updated_material = get_material(db, material_id)
     db.commit()
 
-    return get_material(db, material_id), None
+    return updated_material, None
 
 
 def check_in_material(
@@ -161,6 +187,7 @@ def check_in_material(
             SELECT quantity_available, quantity_reserved, is_archived
             FROM materials
             WHERE id = :material_id
+            FOR UPDATE
             """
         ),
         {"material_id": material_id},
@@ -192,9 +219,10 @@ def check_in_material(
         str(after_quantity),
         payload.reason,
     )
+    updated_material = get_material(db, material_id)
     db.commit()
 
-    return get_material(db, material_id), None
+    return updated_material, None
 
 
 def check_out_material(
@@ -204,7 +232,14 @@ def check_out_material(
     payload: QuantityChange,
 ) -> tuple[MaterialRead | None, str | None]:
     row = db.execute(
-        text("SELECT quantity_available, is_archived FROM materials WHERE id = :material_id"),
+        text(
+            """
+            SELECT quantity_available, quantity_reserved, is_archived
+            FROM materials
+            WHERE id = :material_id
+            FOR UPDATE
+            """
+        ),
         {"material_id": material_id},
     ).mappings().first()
 
@@ -237,9 +272,10 @@ def check_out_material(
         str(after_quantity),
         payload.reason,
     )
+    updated_material = get_material(db, material_id)
     db.commit()
 
-    return get_material(db, material_id), None
+    return updated_material, None
 
 
 def move_material(
@@ -289,7 +325,7 @@ def move_material(
 def get_material(db: Session, material_id: int) -> MaterialRead | None:
     row = db.execute(
         text(
-            """
+            f"""
             SELECT
                 id,
                 material_code,
@@ -301,7 +337,7 @@ def get_material(db: Session, material_id: int) -> MaterialRead | None:
                 quantity_reserved,
                 unit,
                 minimum_quantity,
-                availability_status,
+                {AVAILABILITY_STATUS_SQL} AS availability_status,
                 qc_status,
                 storage_condition,
                 location_id,
@@ -323,9 +359,12 @@ def get_material(db: Session, material_id: int) -> MaterialRead | None:
 
     return MaterialRead(**row)
 
-def create_material(db: Session, payload: MaterialCreate) -> MaterialRead | None:
+def create_material(
+    db: Session,
+    payload: MaterialCreate,
+) -> tuple[MaterialRead | None, str | None]:
     if not _location_exists(db, payload.location_id):
-        return None
+        return None, "invalid_location"
 
     existing_material = db.execute(
         text("SELECT id FROM materials WHERE material_code = :material_code"),
@@ -333,7 +372,7 @@ def create_material(db: Session, payload: MaterialCreate) -> MaterialRead | None
     ).first()
 
     if existing_material is not None:
-        return None
+        return None, "duplicate_code"
 
     db.execute(
     text(
@@ -384,18 +423,22 @@ def create_material(db: Session, payload: MaterialCreate) -> MaterialRead | None
     material_id = db.execute(text("SELECT LAST_INSERT_ID()")).scalar_one()
     db.commit()
 
-    return get_material(db, material_id)
+    return get_material(db, material_id), None
 
-def update_material(db: Session, material_id: int, payload: MaterialUpdate) -> MaterialRead | None:
+def update_material(
+    db: Session,
+    material_id: int,
+    payload: MaterialUpdate,
+) -> tuple[MaterialRead | None, str | None]:
     existing_material = db.execute(
         text("SELECT id FROM materials WHERE id = :material_id"),
         {"material_id": material_id},
     ).first()
 
     if existing_material is None:
-        return None
+        return None, "not_found"
     if "location_id" in payload.model_fields_set and not _location_exists(db, payload.location_id):
-        return None
+        return None, "invalid_location"
 
     updates = {}
     editable_fields = {
@@ -415,7 +458,7 @@ def update_material(db: Session, material_id: int, payload: MaterialUpdate) -> M
             updates[field] = getattr(payload, field)
 
     if not updates:
-        return get_material(db, material_id)
+        return get_material(db, material_id), None
 
     set_clause = ", ".join(f"{field} = :{field}" for field in updates)
     db.execute(
@@ -431,16 +474,47 @@ def update_material(db: Session, material_id: int, payload: MaterialUpdate) -> M
     
     db.commit()
 
-    return get_material(db, material_id)
+    return get_material(db, material_id), None
 
-def archive_material(db: Session, material_id: int, current_user: int, reason: str) -> bool:
+def archive_material(
+    db: Session,
+    material_id: int,
+    current_user: int,
+    reason: str,
+) -> tuple[bool, str | None]:
     existing_material = db.execute(
-        text("SELECT id FROM materials WHERE id = :material_id"),
+        text(
+            """
+            SELECT id, is_archived, quantity_reserved
+            FROM materials
+            WHERE id = :material_id
+            FOR UPDATE
+            """
+        ),
         {"material_id": material_id},
-    ).first()
+    ).mappings().first()
 
     if existing_material is None:
-        return False
+        return False, "not_found"
+    if existing_material["is_archived"]:
+        return False, "already_archived"
+
+    approved_order_exists = db.execute(
+        text(
+            """
+            SELECT id
+            FROM orders
+            WHERE material_id = :material_id
+            AND status = 'approved'
+            LIMIT 1
+            """
+        ),
+        {"material_id": material_id},
+    ).first()
+    if existing_material["quantity_reserved"] > 0:
+        return False, "active_reservation"
+    if approved_order_exists is not None:
+        return False, "active_reservation"
 
     db.execute(
         text(
@@ -452,32 +526,72 @@ def archive_material(db: Session, material_id: int, current_user: int, reason: s
         ),
         {"material_id": material_id, "current_user": current_user, "reason": reason},
     )
+    _log_inventory_audit(
+        db,
+        current_user,
+        material_id,
+        "archive_material",
+        "active",
+        "archived",
+        reason,
+    )
     db.commit()
 
-    return True
+    return True, None
 
-def restore_material(db: Session, material_id: int) -> bool:
+
+def restore_material(
+    db: Session,
+    material_id: int,
+    current_user: int,
+) -> tuple[bool, str | None]:
     existing_material = db.execute(
-        text("SELECT id FROM materials WHERE id = :material_id"),
+        text(
+            """
+            SELECT id, is_archived, archive_reason
+            FROM materials
+            WHERE id = :material_id
+            FOR UPDATE
+            """
+        ),
         {"material_id": material_id},
-    ).first()
+    ).mappings().first()
 
     if existing_material is None:
-        return False
-    
+        return False, "not_found"
+    if not existing_material["is_archived"]:
+        return False, "not_archived"
+
     db.execute(
         text(
             """
             UPDATE materials
-            SET is_archived = FALSE, archived_at = NULL
+            SET
+                is_archived = FALSE,
+                archived_at = NULL,
+                archived_by_user_id = NULL,
+                archive_reason = NULL
             WHERE id = :material_id
             """
         ),
         {"material_id": material_id},
     )
+    previous_reason = existing_material["archive_reason"]
+    restore_reason = "Material restored"
+    if previous_reason:
+        restore_reason += f"; previous archive reason: {previous_reason}"
+    _log_inventory_audit(
+        db,
+        current_user,
+        material_id,
+        "restore_material",
+        "archived",
+        "active",
+        restore_reason,
+    )
     db.commit()
 
-    return True
+    return True, None
 
 def search_materials(
     db: Session,
@@ -489,8 +603,10 @@ def search_materials(
     location_id: int | None = None,
     low_stock: bool = False,
     include_archived: bool = False,
-) -> list[MaterialRead]:
-    query = """
+    page: int = 1,
+    size: int = 25,
+) -> Page[MaterialRead]:
+    query = f"""
         SELECT
             id,
             material_code,
@@ -502,7 +618,7 @@ def search_materials(
             quantity_reserved,
             unit,
             minimum_quantity,
-            availability_status,
+            {AVAILABILITY_STATUS_SQL} AS availability_status,
             qc_status,
             storage_condition,
             location_id,
@@ -513,50 +629,74 @@ def search_materials(
             created_at,
             updated_at
         FROM materials
-        WHERE 1=1
     """
-    params = {}
+    params: dict[str, object] = {}
+    conditions = ["1=1"]
 
     if not include_archived:
-        query += " AND is_archived = FALSE"
+        conditions.append("is_archived = FALSE")
 
     if keyword:
-        query += """
-            AND (
+        conditions.append(
+            """
+            (
                 material_code LIKE :keyword
                 OR material_name LIKE :keyword
                 OR description LIKE :keyword
             )
-        """
+            """
+        )
         params["keyword"] = f"%{keyword}%"
 
     if material_type:
-        query += " AND material_type = :material_type"
+        conditions.append("material_type = :material_type")
         params["material_type"] = material_type
 
     if source:
-        query += " AND source = :source"
+        conditions.append("source = :source")
         params["source"] = source
 
     if qc_status:
-        query += " AND qc_status = :qc_status"
+        conditions.append("qc_status = :qc_status")
         params["qc_status"] = qc_status
 
-    if availability_status == "low_stock":
-        query += " AND quantity_available <= minimum_quantity"
+    if availability_status == "available":
+        conditions.append("quantity_available - quantity_reserved > minimum_quantity")
+    elif availability_status == "low_stock":
+        conditions.append("quantity_available - quantity_reserved > 0")
+        conditions.append(
+            "quantity_available - quantity_reserved <= minimum_quantity"
+        )
+    elif availability_status == "unavailable":
+        conditions.append("quantity_available - quantity_reserved <= 0")
     elif availability_status:
-        query += " AND availability_status = :availability_status"
-        params["availability_status"] = availability_status
+        return build_page([], page=page, size=size, total=0)
 
     if location_id is not None:
-        query += " AND location_id = :location_id"
+        conditions.append("location_id = :location_id")
         params["location_id"] = location_id
 
     if low_stock:
-        query += " AND quantity_available <= minimum_quantity"
+        conditions.append(
+            "quantity_available - quantity_reserved <= minimum_quantity"
+        )
 
-    query += " ORDER BY id"
+    where_clause = " AND ".join(conditions)
+    query += f" WHERE {where_clause}"
+    total = db.execute(
+        text(f"SELECT COUNT(*) FROM materials WHERE {where_clause}"),
+        params,
+    ).scalar_one()
+    query += " ORDER BY id LIMIT :size OFFSET :offset"
 
-    rows = db.execute(text(query), params).mappings().all()
+    rows = db.execute(
+        text(query),
+        {**params, "size": size, "offset": page_offset(page, size)},
+    ).mappings().all()
 
-    return [MaterialRead(**row) for row in rows]
+    return build_page(
+        [MaterialRead(**row) for row in rows],
+        page=page,
+        size=size,
+        total=total,
+    )

@@ -6,8 +6,9 @@ import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
 import { MaterialFormModal } from '../components/MaterialFormModal'
 import { PageHeader } from '../components/PageHeader'
+import { PaginationControls } from '../components/PaginationControls'
 import { StatusBadge } from '../components/StatusBadge'
-import { canManageOperations, isAdmin, type Location, type Material, type MaterialPayload, type MaterialSearchParams, type MaterialUpdatePayload } from '../types'
+import { canManageOperations, isAdmin, type Location, type Material, type MaterialPayload, type MaterialSearchParams, type MaterialUpdatePayload, type Page } from '../types'
 import { formatDate, quantityLabel } from '../utils/format'
 
 interface MaterialFilters {
@@ -62,8 +63,7 @@ function directoryTitle(searchParams: URLSearchParams): string {
   return 'Materials catalogue'
 }
 
-function directoryDescription(searchParams: URLSearchParams, materials: Material[] | null): string {
-  const count = materials?.length ?? 0
+function directoryDescription(searchParams: URLSearchParams, count: number): string {
   const materialLabel = count === 1 ? 'material' : 'materials'
   if (searchParams.get('scope') === 'active') return `Showing ${count} active ${materialLabel} from the overview count.`
   if (searchParams.get('availability_status') === 'available') return `Showing ${count} available ${materialLabel} with on-hand quantity.`
@@ -75,6 +75,8 @@ export function MaterialsPage() {
   const { token, user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const [materials, setMaterials] = useState<Material[] | null>(null)
+  const [resultPage, setResultPage] = useState<Page<Material> | null>(null)
+  const [page, setPage] = useState(1)
   const [filterOptionMaterials, setFilterOptionMaterials] = useState<Material[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -83,39 +85,42 @@ export function MaterialsPage() {
   const staffAccess = canManageOperations(user)
   const adminAccess = isAdmin(user)
 
-  const load = useCallback(async (searchParams?: MaterialSearchParams) => {
+  const load = useCallback(async (searchParams?: MaterialSearchParams, requestedPage = page) => {
     if (!token) return
     setError(null)
     try {
       const [materialResult, optionMaterialResult, locationResult] = await Promise.all([
-        searchParams ? api.searchMaterials(token, searchParams) : api.listMaterials(token),
-        api.listMaterials(token),
-        api.listLocations(token),
+        searchParams ? api.searchMaterials(token, { ...searchParams, page: requestedPage, size: 25 }) : api.listMaterials(token, { page: requestedPage, size: 25 }),
+        api.listAllMaterials(token),
+        api.listAllLocations(token),
       ])
-      setMaterials(materialResult)
+      setMaterials(materialResult.items)
+      setResultPage(materialResult)
       setFilterOptionMaterials(optionMaterialResult)
       setLocations(locationResult)
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Unable to load inventory.')
     }
-  }, [token])
+  }, [page, token])
 
   useEffect(() => {
     const nextFilters = filtersFromSearchParams(searchParams)
     setFilters(nextFilters)
-    void load(materialSearchParamsFromFilters(nextFilters, adminAccess))
-  }, [adminAccess, load, searchParams])
+    void load(materialSearchParamsFromFilters(nextFilters, adminAccess), page)
+  }, [adminAccess, load, page, searchParams])
 
   const locationNames = useMemo(() => new Map(locations.map((location) => [location.id, location.name])), [locations])
   const materialTypes = useMemo(() => [...new Set(filterOptionMaterials.map((material) => material.material_type))].sort(), [filterOptionMaterials])
   const currentDirectoryTitle = useMemo(() => directoryTitle(searchParams), [searchParams])
-  const currentDirectoryDescription = useMemo(() => directoryDescription(searchParams, materials), [materials, searchParams])
+  const currentDirectoryDescription = useMemo(() => directoryDescription(searchParams, resultPage?.total ?? 0), [resultPage?.total, searchParams])
 
   function applyFilters() {
+    setPage(1)
     setSearchParams(searchParamsFromFilters(filters, adminAccess))
   }
 
   function resetFilters() {
+    setPage(1)
     setFilters(emptyFilters)
     setSearchParams({})
   }
@@ -123,7 +128,7 @@ export function MaterialsPage() {
   async function createMaterial(payload: MaterialPayload | MaterialUpdatePayload) {
     if (!token) return
     await api.createMaterial(token, payload as MaterialPayload)
-    await load()
+    await load(undefined, page)
   }
 
   if (!materials && !error) return <LoadingState label="Loading inventory…" />
@@ -158,7 +163,8 @@ export function MaterialsPage() {
         <p className="mt-1">{currentDirectoryDescription}</p>
       </section>
       <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-panel">
-        {materials?.length ? <div className="overflow-x-auto"><table className="min-w-full divide-y divide-slate-200"><thead className="bg-slate-50"><tr><th className="table-heading">#</th><th className="table-heading">Material</th><th className="table-heading">Quantity</th><th className="table-heading">QC</th><th className="table-heading">Location</th><th className="table-heading">Updated</th><th className="table-heading"><span className="sr-only">Open</span></th></tr></thead><tbody className="divide-y divide-slate-100">{materials.map((material, index) => <tr key={material.id} className="transition hover:bg-slate-50"><td className="table-cell whitespace-nowrap font-mono text-xs text-slate-500">{index + 1}</td><td className="table-cell"><p className="font-semibold text-slate-900">{material.material_name}</p><p className="mt-1 text-xs text-slate-500">{material.material_code} · {material.material_type}{material.is_archived ? ' · archived' : ''}</p></td><td className="table-cell"><p className={material.quantity_available <= material.minimum_quantity ? 'font-semibold text-amber-700' : 'font-semibold text-slate-900'}>{quantityLabel(material.quantity_available, material.unit)}</p><p className="mt-1 text-xs text-slate-500">{quantityLabel(material.quantity_reserved, material.unit)} reserved · min {material.minimum_quantity}</p></td><td className="table-cell"><StatusBadge value={material.qc_status} kind="qc" /></td><td className="table-cell">{locationNames.get(material.location_id ?? -1) ?? 'Unassigned'}</td><td className="table-cell whitespace-nowrap text-xs">{formatDate(material.updated_at)}</td><td className="table-cell text-right"><Link className="link" to={`/inventory/${material.id}`}>Open</Link></td></tr>)}</tbody></table></div> : <EmptyState title="No materials found" description="Try clearing filters or add a material to begin building the catalogue." action={staffAccess ? <button className="button-primary" onClick={() => setIsCreateOpen(true)}>Add material</button> : undefined} />}
+        {materials?.length ? <div className="overflow-x-auto"><table className="min-w-full divide-y divide-slate-200"><thead className="bg-slate-50"><tr><th className="table-heading">#</th><th className="table-heading">Material</th><th className="table-heading">Quantity</th><th className="table-heading">QC</th><th className="table-heading">Location</th><th className="table-heading">Updated</th><th className="table-heading"><span className="sr-only">Open</span></th></tr></thead><tbody className="divide-y divide-slate-100">{materials.map((material, index) => <tr key={material.id} className="transition hover:bg-slate-50"><td className="table-cell whitespace-nowrap font-mono text-xs text-slate-500">{((resultPage?.page ?? 1) - 1) * (resultPage?.size ?? 25) + index + 1}</td><td className="table-cell"><p className="font-semibold text-slate-900">{material.material_name}</p><p className="mt-1 text-xs text-slate-500">{material.material_code} · {material.material_type}{material.is_archived ? ' · archived' : ''}</p></td><td className="table-cell"><p className={material.availability_status !== 'available' ? 'font-semibold text-amber-700' : 'font-semibold text-slate-900'}>{quantityLabel(material.quantity_available, material.unit)}</p><p className="mt-1 text-xs text-slate-500">{quantityLabel(material.quantity_reserved, material.unit)} reserved · min {material.minimum_quantity}</p></td><td className="table-cell"><StatusBadge value={material.qc_status} kind="qc" /></td><td className="table-cell">{locationNames.get(material.location_id ?? -1) ?? 'Unassigned'}</td><td className="table-cell whitespace-nowrap text-xs">{formatDate(material.updated_at)}</td><td className="table-cell text-right"><Link className="link" to={`/inventory/${material.id}`}>Open</Link></td></tr>)}</tbody></table></div> : <EmptyState title="No materials found" description="Try clearing filters or add a material to begin building the catalogue." action={staffAccess ? <button className="button-primary" onClick={() => setIsCreateOpen(true)}>Add material</button> : undefined} />}
+        {resultPage && <PaginationControls page={resultPage.page} pages={resultPage.pages} total={resultPage.total} label="materials" onPageChange={setPage} />}
       </section>
       {isCreateOpen && <MaterialFormModal locations={locations} onClose={() => setIsCreateOpen(false)} onSave={createMaterial} />}
     </section>

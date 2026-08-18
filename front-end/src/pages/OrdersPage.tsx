@@ -5,8 +5,9 @@ import { EmptyState } from '../components/EmptyState'
 import { LoadingState } from '../components/LoadingState'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
+import { PaginationControls } from '../components/PaginationControls'
 import { StatusBadge } from '../components/StatusBadge'
-import { isAdmin, type Material, type Order } from '../types'
+import { isAdmin, type Material, type Order, type Page } from '../types'
 import { formatDate, quantityLabel } from '../utils/format'
 
 type ReviewAction = 'approve' | 'reject' | 'fulfill' | 'cancel' | 'archive'
@@ -15,19 +16,11 @@ function canArchiveOrder(order: Order): boolean {
   return !order.is_archived && !['submitted', 'approved'].includes(order.status)
 }
 
-function requestSummary(orders: Order[] | null) {
-  const entries = orders ?? []
-  const archived = entries.filter((order) => order.is_archived).length
-  return {
-    total: entries.length,
-    active: entries.length - archived,
-    archived,
-  }
-}
-
 export function OrdersPage() {
   const { token, user } = useAuth()
   const [orders, setOrders] = useState<Order[] | null>(null)
+  const [resultPage, setResultPage] = useState<Page<Order> | null>(null)
+  const [page, setPage] = useState(1)
   const [materials, setMaterials] = useState<Material[]>([])
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -41,15 +34,16 @@ export function OrdersPage() {
     if (!token) return
     setError(null)
     try {
-      const [orderResult, materialResult] = await Promise.all([api.listOrders(token, { include_archived: includeArchived }), api.listMaterials(token)])
-      setOrders(orderResult)
+      const [orderResult, materialResult] = await Promise.all([api.listOrders(token, { include_archived: includeArchived, page, size: 25 }), api.listAllMaterials(token)])
+      setOrders(orderResult.items)
+      setResultPage(orderResult)
       setMaterials(materialResult)
     } catch (caughtError) { setError(caughtError instanceof Error ? caughtError.message : 'Unable to load requests.') }
-  }, [includeArchived, token])
+  }, [includeArchived, page, token])
 
   useEffect(() => { void load() }, [load])
   const materialMap = useMemo(() => new Map(materials.map((material) => [material.id, material])), [materials])
-  const summary = useMemo(() => requestSummary(orders), [orders])
+  const archivedOnPage = useMemo(() => (orders ?? []).filter((order) => order.is_archived).length, [orders])
 
   async function openOrder(id: number) {
     if (!token) return
@@ -67,16 +61,17 @@ export function OrdersPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-sm font-semibold text-slate-950">{includeArchived ? 'All requests' : 'Active request queue'}</h2>
-            <p className="mt-1 text-sm text-slate-500">{includeArchived ? `${summary.total} total requests shown, including ${summary.archived} archived.` : `${summary.active} active requests shown. Archived requests are hidden.`}</p>
+            <p className="mt-1 text-sm text-slate-500">{includeArchived ? `${resultPage?.total ?? 0} total requests. This page includes ${archivedOnPage} archived.` : `${resultPage?.total ?? 0} active requests. Archived requests are hidden.`}</p>
           </div>
           <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
-            <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-lab-700 focus:ring-teal-500" checked={includeArchived} onChange={(event) => setIncludeArchived(event.target.checked)} />
+            <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-lab-700 focus:ring-teal-500" checked={includeArchived} onChange={(event) => { setIncludeArchived(event.target.checked); setPage(1) }} />
             Include archived requests
           </label>
         </div>
       </section>
       <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-panel">
         {orders?.length ? <div className="overflow-x-auto"><table className="min-w-full divide-y divide-slate-200"><thead className="bg-slate-50"><tr><th className="table-heading">Request</th>{adminAccess && <th className="table-heading">Requester</th>}<th className="table-heading">Material</th><th className="table-heading">Status</th><th className="table-heading">Created</th><th className="table-heading"><span className="sr-only">Actions</span></th></tr></thead><tbody className="divide-y divide-slate-100">{orders.map((order) => { const material = materialMap.get(order.material_id); return <tr key={order.id} className={order.is_archived ? 'bg-slate-50/70 text-slate-500 hover:bg-slate-100' : 'hover:bg-slate-50'}><td className="table-cell"><p className={order.is_archived ? 'font-semibold text-slate-600' : 'font-semibold text-slate-900'}>Request #{order.id}</p><p className="mt-1 text-xs text-slate-500">{quantityLabel(order.requested_quantity, material?.unit ?? 'units')}{order.reserved_quantity ? ` · ${order.reserved_quantity} reserved` : ''}</p></td>{adminAccess && <td className="table-cell">User #{order.requested_by_user_id}</td>}<td className="table-cell"><p className={order.is_archived ? 'font-medium text-slate-600' : 'font-medium text-slate-900'}>{material?.material_name ?? `Material #${order.material_id}`}</p><p className="mt-1 text-xs text-slate-500">{material?.material_code ?? 'Unavailable material record'}</p></td><td className="table-cell"><div className="flex flex-wrap gap-2"><StatusBadge value={order.status} kind="order" />{order.is_archived && <StatusBadge value="archived" kind="order" />}</div></td><td className="table-cell whitespace-nowrap text-xs">{formatDate(order.created_at)}</td><td className="table-cell"><div className="flex justify-end gap-3"><button type="button" className="link text-sm" onClick={() => void openOrder(order.id)}>View</button>{adminAccess && order.status === 'submitted' && <><button type="button" className="link text-sm" onClick={() => setReview({ order, action: 'approve' })}>Approve</button><button type="button" className="link text-sm" onClick={() => setReview({ order, action: 'reject' })}>Reject</button></>}{adminAccess && order.status === 'approved' && <button type="button" className="link text-sm" onClick={() => setReview({ order, action: 'fulfill' })}>Fulfill</button>}{(order.status === 'submitted' || order.status === 'approved') && <button type="button" className="link text-sm" onClick={() => setReview({ order, action: 'cancel' })}>Cancel</button>}{canArchiveOrder(order) && <button type="button" className="link text-sm" onClick={() => setReview({ order, action: 'archive' })}>Archive</button>}</div></td></tr> })}</tbody></table></div> : <EmptyState title={includeArchived ? 'No requests found' : 'No active requests'} description={includeArchived ? 'Create a request for any active material in the catalogue.' : 'Create a request or include archived requests to review older records.'} action={<button className="button-primary" onClick={() => setIsCreateOpen(true)}>New request</button>} />}
+        {resultPage && <PaginationControls page={resultPage.page} pages={resultPage.pages} total={resultPage.total} label="requests" onPageChange={setPage} />}
       </section>
       {isCreateOpen && <CreateRequestDialog materials={materials} onClose={() => setIsCreateOpen(false)} onComplete={async () => { await load(); setNotice('Your material request was submitted.') }} />}
       {selectedOrder && <OrderDetailDialog order={selectedOrder} material={materialMap.get(selectedOrder.material_id)} onClose={() => setSelectedOrder(null)} />}
@@ -107,7 +102,7 @@ function CreateRequestDialog({ materials, onClose, onComplete }: { materials: Ma
     try { await api.createOrder(token, { material_id: Number(materialId), requested_quantity: requestedQuantity, request_notes: notes.trim() || null }); await onComplete(); onClose() } catch (caughtError) { setError(caughtError instanceof Error ? caughtError.message : 'Unable to submit request.') } finally { setIsSubmitting(false) }
   }
 
-  return <Modal title="New material request" onClose={onClose}><form className="space-y-5" onSubmit={submit} noValidate>{error && <p className="alert-error" role="alert">{error}</p>}<label className="field-label" htmlFor="request-material">Material<select id="request-material" className="field-select" value={materialId} onChange={(event) => setMaterialId(event.target.value)}><option value="">Choose a material</option>{requestableMaterials.map((material) => <option key={material.id} value={material.id}>{material.material_name} · {quantityLabel(material.quantity_available, material.unit)} available</option>)}</select></label><label className="field-label" htmlFor="new-request-quantity">Requested quantity<input id="new-request-quantity" className="field-input" type="number" min="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label><label className="field-label" htmlFor="new-request-notes">Notes <span className="font-normal text-slate-500">(optional)</span><textarea id="new-request-notes" className="field-textarea" value={notes} onChange={(event) => setNotes(event.target.value)} /></label><div className="flex justify-end gap-3 border-t border-slate-100 pt-5"><button type="button" className="button-secondary" onClick={onClose}>Cancel</button><button type="submit" className="button-primary" disabled={isSubmitting}>{isSubmitting ? 'Submitting…' : 'Submit request'}</button></div></form></Modal>
+  return <Modal title="New material request" onClose={onClose}><form className="space-y-5" onSubmit={submit} noValidate>{error && <p className="alert-error" role="alert">{error}</p>}<label className="field-label" htmlFor="request-material">Material<select id="request-material" className="field-select" value={materialId} onChange={(event) => setMaterialId(event.target.value)}><option value="">Choose a material</option>{requestableMaterials.map((material) => <option key={material.id} value={material.id}>{material.material_name} · {quantityLabel(material.quantity_available - material.quantity_reserved, material.unit)} unreserved</option>)}</select></label><label className="field-label" htmlFor="new-request-quantity">Requested quantity<input id="new-request-quantity" className="field-input" type="number" min="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label><label className="field-label" htmlFor="new-request-notes">Notes <span className="font-normal text-slate-500">(optional)</span><textarea id="new-request-notes" className="field-textarea" value={notes} onChange={(event) => setNotes(event.target.value)} /></label><div className="flex justify-end gap-3 border-t border-slate-100 pt-5"><button type="button" className="button-secondary" onClick={onClose}>Cancel</button><button type="submit" className="button-primary" disabled={isSubmitting}>{isSubmitting ? 'Submitting…' : 'Submit request'}</button></div></form></Modal>
 }
 
 function OrderDetailDialog({ order, material, onClose }: { order: Order; material: Material | undefined; onClose: () => void }) {
@@ -132,16 +127,17 @@ function ReviewDialog({ review, onClose, onComplete }: { review: { order: Order;
     setError(null)
     try {
       const outcomeNotes = notes.trim() || null
+      if (review.action === 'archive' && !outcomeNotes) { setError('Archive reason is required.'); setIsSubmitting(false); return }
       if (review.action === 'approve') await api.approveOrder(token, review.order.id, outcomeNotes)
       if (review.action === 'reject') await api.rejectOrder(token, review.order.id, outcomeNotes)
       if (review.action === 'fulfill') await api.fulfillOrder(token, review.order.id, outcomeNotes)
       if (review.action === 'cancel') await api.cancelOrder(token, review.order.id, outcomeNotes)
-      if (review.action === 'archive') await api.archiveOrder(token, review.order.id, outcomeNotes)
+      if (review.action === 'archive') await api.archiveOrder(token, review.order.id, outcomeNotes as string)
       const outcome = review.action === 'fulfill' ? 'fulfilled' : review.action === 'cancel' ? 'canceled' : review.action === 'archive' ? 'archived' : `${review.action}d`
       await onComplete(`Request #${review.order.id} was ${outcome}.`)
       onClose()
     } catch (caughtError) { setError(caughtError instanceof Error ? caughtError.message : 'Unable to update request.') } finally { setIsSubmitting(false) }
   }
 
-  return <Modal title={`${actionLabel} request #${review.order.id}`} onClose={onClose}><form className="space-y-5" onSubmit={submit}>{error && <p className="alert-error" role="alert">{error}</p>}<p className="text-sm leading-6 text-slate-600">{review.action === 'archive' ? 'This hides the request from the default queue while keeping it available when archived requests are included.' : 'This action updates the request lifecycle and may affect reserved inventory.'}</p><label className="field-label" htmlFor="review-notes">{review.action === 'archive' ? 'Archive reason' : 'Outcome notes'} <span className="font-normal text-slate-500">(optional)</span><textarea id="review-notes" className="field-textarea" value={notes} onChange={(event) => setNotes(event.target.value)} /></label><div className="flex justify-end gap-3 border-t border-slate-100 pt-5"><button type="button" className="button-secondary" onClick={onClose}>Cancel</button><button type="submit" className="button-primary" disabled={isSubmitting}>{isSubmitting ? 'Saving…' : `${actionLabel} request`}</button></div></form></Modal>
+  return <Modal title={`${actionLabel} request #${review.order.id}`} onClose={onClose}><form className="space-y-5" onSubmit={submit}>{error && <p className="alert-error" role="alert">{error}</p>}<p className="text-sm leading-6 text-slate-600">{review.action === 'archive' ? 'This permanently archives the request from the default queue. Archived orders are retained for audit and cannot be restored.' : 'This action updates the request lifecycle and may affect reserved inventory.'}</p><label className="field-label" htmlFor="review-notes">{review.action === 'archive' ? 'Archive reason' : 'Outcome notes'} {review.action !== 'archive' && <span className="font-normal text-slate-500">(optional)</span>}<textarea id="review-notes" className="field-textarea" value={notes} onChange={(event) => setNotes(event.target.value)} /></label><div className="flex justify-end gap-3 border-t border-slate-100 pt-5"><button type="button" className="button-secondary" onClick={onClose}>Cancel</button><button type="submit" className="button-primary" disabled={isSubmitting}>{isSubmitting ? 'Saving…' : `${actionLabel} request`}</button></div></form></Modal>
 }
