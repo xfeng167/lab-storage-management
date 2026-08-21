@@ -12,6 +12,12 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    allowedHosts: [
+      'lab-storage-management-production.up.railway.app',
+      'healthcheck.railway.app',
+    ],
+  },
   test: {
     environment: 'jsdom',
     threads: false,
