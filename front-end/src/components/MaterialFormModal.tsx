@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react'
 import type { Location, Material, MaterialPayload, MaterialUpdatePayload } from '../types'
 import { Modal } from './Modal'
+import { isStandardMaterialUnit, materialUnitOptions, normalizeMaterialUnit } from '../utils/format'
 
 interface MaterialFormModalProps {
   material?: Material
@@ -61,6 +62,7 @@ function createState(material?: Material): MaterialFormState {
 
 export function MaterialFormModal({ material, locations, onClose, onSave }: MaterialFormModalProps) {
   const [form, setForm] = useState<MaterialFormState>(() => createState(material))
+  const [isCustomUnit, setIsCustomUnit] = useState(() => Boolean(material?.unit && !isStandardMaterialUnit(material.unit)))
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -88,7 +90,7 @@ export function MaterialFormModal({ material, locations, onClose, onSave }: Mate
       material_type: form.material_type.trim(),
       description: form.description.trim(),
       source: form.source.trim(),
-      unit: form.unit.trim(),
+      unit: normalizeMaterialUnit(form.unit),
       minimum_quantity: Number(form.minimum_quantity),
       qc_status: form.qc_status,
       storage_condition: form.storage_condition.trim(),
@@ -141,7 +143,21 @@ export function MaterialFormModal({ material, locations, onClose, onSave }: Mate
             <input id="material-type" className="field-input" placeholder="e.g. API, excipient, reagent, packaging component" value={form.material_type} onChange={(event) => update('material_type', event.target.value)} />
           </label>
           <label className="field-label" htmlFor="material-unit">Unit
-            <input id="material-unit" className="field-input" placeholder="e.g. bottles" value={form.unit} onChange={(event) => update('unit', event.target.value)} />
+            <select id="material-unit" className="field-select" value={isCustomUnit ? 'custom' : normalizeMaterialUnit(form.unit)} onChange={(event) => {
+              if (event.target.value === 'custom') {
+                setIsCustomUnit(true)
+                update('unit', '')
+                return
+              }
+              setIsCustomUnit(false)
+              update('unit', event.target.value)
+            }}>
+              <option value="">Choose a unit</option>
+              {materialUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              <option value="custom">Other (custom)</option>
+            </select>
+            {isCustomUnit && <input className="field-input mt-2" aria-label="Custom unit" placeholder="e.g. batch" value={form.unit} onChange={(event) => update('unit', event.target.value)} />}
+            <span className="mt-2 text-xs text-slate-500">Counted units automatically use singular and plural grammar.</span>
           </label>
           {!material && <label className="field-label" htmlFor="quantity-available">Starting quantity
             <input id="quantity-available" className="field-input" type="number" min="0" value={form.quantity_available} onChange={(event) => update('quantity_available', event.target.value)} />

@@ -6,6 +6,12 @@ describe('quantityLabel', () => {
     [0, 'vials', '0 vials'],
     [1, 'vials', '1 vial'],
     [2, 'vials', '2 vials'],
+    [1, 'vial', '1 vial'],
+    [2, 'vial', '2 vials'],
+    [1, 'box', '1 box'],
+    [2, 'box', '2 boxes'],
+    [1, 'mL', '1 mL'],
+    [2, 'mL', '2 mL'],
   ])('formats %s %s as %s', (quantity, unit, expected) => {
     expect(quantityLabel(quantity, unit)).toBe(expected)
   })
