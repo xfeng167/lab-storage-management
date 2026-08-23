@@ -116,10 +116,7 @@ export function MaterialFormModal({ material, locations, onClose, onSave }: Mate
     <Modal title={material ? 'Edit material' : 'Add material'} onClose={onClose} width="wide">
       <form className="space-y-5" onSubmit={submit} noValidate>
         {error && <p className="alert-error" role="alert">{error}</p>}
-        <div className="grid gap-5 sm:grid-cols-2">
-          <label className="field-label" htmlFor="material-code">Material code
-            <input id="material-code" className="field-input" value={form.material_code} disabled={Boolean(material)} onChange={(event) => update('material_code', event.target.value)} />
-          </label>
+        <div className="space-y-5">
           <label className="field-label" htmlFor="material-name">Material name
             <input id="material-name" className="field-input" list="pharma-material-name-options" placeholder="e.g. Metformin Hydrochloride USP" value={form.material_name} onChange={(event) => update('material_name', event.target.value)} />
             <datalist id="pharma-material-name-options">
@@ -139,41 +136,50 @@ export function MaterialFormModal({ material, locations, onClose, onSave }: Mate
               ))}
             </div>
           </label>
-          <label className="field-label" htmlFor="material-type">Material type
-            <input id="material-type" className="field-input" placeholder="e.g. API, excipient, reagent, packaging component" value={form.material_type} onChange={(event) => update('material_type', event.target.value)} />
-          </label>
-          <label className="field-label" htmlFor="material-unit">Unit
-            <select id="material-unit" className="field-select" value={isCustomUnit ? 'custom' : normalizeMaterialUnit(form.unit)} onChange={(event) => {
-              if (event.target.value === 'custom') {
-                setIsCustomUnit(true)
-                update('unit', '')
-                return
-              }
-              setIsCustomUnit(false)
-              update('unit', event.target.value)
-            }}>
-              <option value="">Choose a unit</option>
-              {materialUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              <option value="custom">Other (custom)</option>
-            </select>
-            {isCustomUnit && <input className="field-input mt-2" aria-label="Custom unit" placeholder="e.g. batch" value={form.unit} onChange={(event) => update('unit', event.target.value)} />}
-            <span className="mt-2 text-xs text-slate-500">Counted units automatically use singular and plural grammar.</span>
-          </label>
-          {!material && <label className="field-label" htmlFor="quantity-available">Starting quantity
-            <input id="quantity-available" className="field-input" type="number" min="0" value={form.quantity_available} onChange={(event) => update('quantity_available', event.target.value)} />
-          </label>}
-          <label className="field-label" htmlFor="minimum-quantity">Minimum quantity
-            <input id="minimum-quantity" className="field-input" type="number" min="0" value={form.minimum_quantity} onChange={(event) => update('minimum_quantity', event.target.value)} />
-          </label>
-          <label className="field-label" htmlFor="qc-status">QC status
-            <select id="qc-status" className="field-select" value={form.qc_status} onChange={(event) => update('qc_status', event.target.value)}>
-              <option value="pending">Pending</option><option value="passed">Passed</option><option value="failed">Failed</option>
-            </select>
-          </label>
-          <label className="field-label" htmlFor="storage-condition">Storage condition
-            <input id="storage-condition" className="field-input" placeholder="e.g. -80C" value={form.storage_condition} onChange={(event) => update('storage_condition', event.target.value)} />
-          </label>
-          <label className="field-label sm:col-span-2" htmlFor="material-location">Location
+          <div className="grid gap-5 sm:grid-cols-2">
+            <label className="field-label" htmlFor="material-code">Material code
+              <input id="material-code" className="field-input" value={form.material_code} disabled={Boolean(material)} onChange={(event) => update('material_code', event.target.value)} />
+            </label>
+            <label className="field-label" htmlFor="material-type">Material type
+              <input id="material-type" className="field-input" placeholder="e.g. API, excipient, reagent, packaging component" value={form.material_type} onChange={(event) => update('material_type', event.target.value)} />
+            </label>
+          </div>
+          <div className={`grid gap-5 ${material ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
+            <label className="field-label" htmlFor="material-unit">Unit
+              <select id="material-unit" className="field-select" value={isCustomUnit ? 'custom' : normalizeMaterialUnit(form.unit)} onChange={(event) => {
+                if (event.target.value === 'custom') {
+                  setIsCustomUnit(true)
+                  update('unit', '')
+                  return
+                }
+                setIsCustomUnit(false)
+                update('unit', event.target.value)
+              }}>
+                <option value="">Choose a unit</option>
+                {materialUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                <option value="custom">Other (custom)</option>
+              </select>
+              {isCustomUnit && <input className="field-input mt-2" aria-label="Custom unit" placeholder="e.g. batch" value={form.unit} onChange={(event) => update('unit', event.target.value)} />}
+              <span className="mt-2 text-xs text-slate-500">Counted units automatically use singular and plural grammar.</span>
+            </label>
+            {!material && <label className="field-label" htmlFor="quantity-available">Starting quantity
+              <input id="quantity-available" className="field-input" type="number" min="0" value={form.quantity_available} onChange={(event) => update('quantity_available', event.target.value)} />
+            </label>}
+            <label className="field-label" htmlFor="minimum-quantity">Minimum quantity
+              <input id="minimum-quantity" className="field-input" type="number" min="0" value={form.minimum_quantity} onChange={(event) => update('minimum_quantity', event.target.value)} />
+            </label>
+          </div>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <label className="field-label" htmlFor="qc-status">QC status
+              <select id="qc-status" className="field-select" value={form.qc_status} onChange={(event) => update('qc_status', event.target.value)}>
+                <option value="pending">Pending</option><option value="passed">Passed</option><option value="failed">Failed</option>
+              </select>
+            </label>
+            <label className="field-label" htmlFor="storage-condition">Storage condition
+              <input id="storage-condition" className="field-input" placeholder="e.g. -80C" value={form.storage_condition} onChange={(event) => update('storage_condition', event.target.value)} />
+            </label>
+          </div>
+          <label className="field-label" htmlFor="material-location">Location
             <select id="material-location" className="field-select" value={form.location_id} onChange={(event) => update('location_id', event.target.value)}>
               <option value="">Unassigned</option>
               {locations.map((location) => <option key={location.id} value={location.id}>{location.name} · {location.location_type}</option>)}

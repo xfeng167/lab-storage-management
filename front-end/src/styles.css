@@ -11,7 +11,7 @@
 
 @layer components {
   .eyebrow { @apply text-xs font-bold uppercase tracking-[0.18em] text-teal-700; }
-  .field-label { @apply grid gap-2 text-sm font-semibold text-slate-800; }
+  .field-label { @apply grid items-start gap-2 text-sm font-semibold text-slate-800; }
   .field-input { @apply w-full rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-100; }
   .field-select { @apply field-input appearance-none; }
   .field-textarea { @apply field-input min-h-28 resize-y; }
