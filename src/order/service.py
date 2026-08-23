@@ -14,6 +14,7 @@ ORDER_STATUS_APPROVED = "approved"
 ORDER_STATUS_REJECTED = "rejected"
 ORDER_STATUS_FULFILLED = "fulfilled"
 ORDER_STATUS_CANCELED = "canceled"
+ACTIVE_ORDER_STATUSES = (ORDER_STATUS_SUBMITTED, ORDER_STATUS_APPROVED)
 
 AUDIT_ORDER_RESERVATION_CREATED = "order_reservation_created"
 AUDIT_ORDER_FULFILLED = "order_fulfilled"
@@ -121,6 +122,11 @@ def _get_order_row(db: Session, order_id: int, *, for_update: bool = False):
             SELECT
                 id,
                 requested_by_user_id,
+                (
+                    SELECT username
+                    FROM users
+                    WHERE users.id = orders.requested_by_user_id
+                ) AS requested_by_username,
                 material_id,
                 requested_quantity,
                 reserved_quantity,
@@ -211,28 +217,31 @@ def list_orders(
     requested_by_user_id: int | None = None,
     reviewed_by_user_id: int | None = None,
     include_archived: bool = False,
+    active_only: bool = False,
     page: int = 1,
     size: int = 25,
 ) -> Page[OrderRead]:
     query = """
         SELECT
-            id,
-            requested_by_user_id,
-            material_id,
-            requested_quantity,
-            reserved_quantity,
-            status,
-            request_notes,
-            reviewed_by_user_id,
-            reviewed_at,
-            outcome_notes,
-            is_archived,
-            archived_at,
-            archived_by_user_id,
-            archive_reason,
-            created_at,
-            updated_at
+            orders.id,
+            orders.requested_by_user_id,
+            users.username AS requested_by_username,
+            orders.material_id,
+            orders.requested_quantity,
+            orders.reserved_quantity,
+            orders.status,
+            orders.request_notes,
+            orders.reviewed_by_user_id,
+            orders.reviewed_at,
+            orders.outcome_notes,
+            orders.is_archived,
+            orders.archived_at,
+            orders.archived_by_user_id,
+            orders.archive_reason,
+            orders.created_at,
+            orders.updated_at
         FROM orders
+        JOIN users ON users.id = orders.requested_by_user_id
     """
     conditions = []
     params = {}
@@ -246,6 +255,16 @@ def list_orders(
 
     if not include_archived:
         conditions.append("is_archived = FALSE")
+
+    if active_only:
+        active_status_params = {
+            f"active_status_{index}": active_status
+            for index, active_status in enumerate(ACTIVE_ORDER_STATUSES)
+        }
+        conditions.append(
+            "status IN (" + ", ".join(f":{name}" for name in active_status_params) + ")"
+        )
+        params.update(active_status_params)
 
     if status is not None:
         conditions.append("status = :status")

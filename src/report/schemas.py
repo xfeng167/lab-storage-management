@@ -21,6 +21,7 @@ class PendingOrderRead(BaseModel):
     material_id: int
     material_code: str
     material_name: str
+    unit: str
     requested_quantity: int
     status: str
     request_notes: str | None = None

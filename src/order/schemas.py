@@ -26,6 +26,7 @@ class OrderArchive(BaseModel):
 class OrderRead(BaseModel):
     id: int
     requested_by_user_id: int
+    requested_by_username: str
     material_id: int
     requested_quantity: int
     reserved_quantity: int

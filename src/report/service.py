@@ -44,6 +44,7 @@ def list_pending_orders(db: Session) -> list[PendingOrderRead]:
                 orders.material_id,
                 materials.material_code,
                 materials.material_name,
+                materials.unit,
                 orders.requested_quantity,
                 orders.status,
                 orders.request_notes,

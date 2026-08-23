@@ -74,6 +74,7 @@ def list_orders(
     requested_by_user_id: int | None = None,
     reviewed_by_user_id: int | None = None,
     include_archived: bool = False,
+    active_only: bool = False,
     page: int = Query(default=1, ge=1),
     size: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
     current_user: UserRead = Depends(require_order_reader),
@@ -87,6 +88,7 @@ def list_orders(
         requested_by_user_id=requested_by_user_id,
         reviewed_by_user_id=reviewed_by_user_id,
         include_archived=include_archived,
+        active_only=active_only,
         page=page,
         size=size,
     )

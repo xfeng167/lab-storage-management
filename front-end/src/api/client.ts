@@ -14,6 +14,7 @@ import type {
   MaterialUpdatePayload,
   Order,
   OrderCreatePayload,
+  OrderListParams,
   Page,
   PasswordChangePayload,
   PaginationParams,
@@ -174,9 +175,9 @@ export const api = {
   updateLocation: (token: string, locationId: number, payload: Partial<LocationPayload>) =>
     request<Location>(`/locations/${locationId}`, jsonRequest('PATCH', payload, token)),
 
-  listOrders: (token: string, params: PaginationParams & { include_archived?: boolean } = {}) =>
+  listOrders: (token: string, params: OrderListParams = {}) =>
     request<Page<Order>>(withQuery('/orders', params), { headers: authenticatedHeaders(token) }),
-  listAllOrders: (token: string, params: { include_archived?: boolean } = {}) => collectAllPages((page) =>
+  listAllOrders: (token: string, params: Omit<OrderListParams, 'page' | 'size'> = {}) => collectAllPages((page) =>
     request<Page<Order>>(withQuery('/orders', { ...params, page, size: 100 }), { headers: authenticatedHeaders(token) })),
   getOrder: (token: string, orderId: number) => request<Order>(`/orders/${orderId}`, { headers: authenticatedHeaders(token) }),
   createOrder: (token: string, payload: OrderCreatePayload) => request<Order>('/orders', jsonRequest('POST', payload, token)),
