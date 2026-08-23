@@ -6,7 +6,7 @@ import { LoadingState } from '../components/LoadingState'
 import { PageHeader } from '../components/PageHeader'
 import { PaginationControls } from '../components/PaginationControls'
 import type { AuditLog, Material, Page, UserDirectoryEntry } from '../types'
-import { formatDate, humanize } from '../utils/format'
+import { formatAuditChange, formatDate, humanize } from '../utils/format'
 
 const emptyFilters = { userId: '', materialId: '', operation: '' }
 
@@ -95,7 +95,7 @@ export function AuditPage() {
       </section>
       <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-panel">
         {logs?.length ? (
-          <div className="overflow-x-auto"><table className="min-w-full divide-y divide-slate-200"><thead className="bg-slate-50"><tr><th className="table-heading">When</th><th className="table-heading">Material</th><th className="table-heading">Operation</th><th className="table-heading">Change</th><th className="table-heading">Reason</th><th className="table-heading">User</th></tr></thead><tbody className="divide-y divide-slate-100">{logs.map((log) => <tr key={log.id}><td className="table-cell whitespace-nowrap text-xs">{formatDate(log.created_at)}</td><td className="table-cell font-medium text-slate-900">{materialNames.get(log.material_id) ?? `Material #${log.material_id}`}</td><td className="table-cell">{humanize(log.operation_type)}</td><td className="table-cell font-mono text-xs">{log.before_value} → {log.after_value}</td><td className="table-cell max-w-sm"><p className="truncate" title={log.reason}>{log.reason}</p></td><td className="table-cell">{userNames.get(log.user_id) ?? `User #${log.user_id}`}</td></tr>)}</tbody></table></div>
+          <div className="overflow-x-auto"><table className="min-w-full divide-y divide-slate-200"><thead className="bg-slate-50"><tr><th className="table-heading">When</th><th className="table-heading">Material</th><th className="table-heading">Operation</th><th className="table-heading">Change</th><th className="table-heading">Reason</th><th className="table-heading">User</th></tr></thead><tbody className="divide-y divide-slate-100">{logs.map((log) => <tr key={log.id}><td className="table-cell whitespace-nowrap text-xs">{formatDate(log.created_at)}</td><td className="table-cell font-medium text-slate-900">{materialNames.get(log.material_id) ?? `Material #${log.material_id}`}</td><td className="table-cell">{humanize(log.operation_type)}</td><td className="table-cell text-xs"><p>{formatAuditChange(log.before_value, log.after_value)}</p><details className="mt-1 text-slate-500"><summary className="cursor-pointer">Technical details</summary><code className="mt-1 block whitespace-pre-wrap break-all">{log.before_value} → {log.after_value}</code></details></td><td className="table-cell max-w-sm"><p className="truncate" title={log.reason}>{log.reason}</p></td><td className="table-cell">{userNames.get(log.user_id) ?? `User #${log.user_id}`}</td></tr>)}</tbody></table></div>
         ) : <EmptyState title="No matching audit records" description="Change filters or record an audited operation to create an entry." />}
         {resultPage && <PaginationControls page={resultPage.page} pages={resultPage.pages} total={resultPage.total} label="audit records" onPageChange={setPage} />}
       </section>

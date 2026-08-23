@@ -2312,6 +2312,54 @@ def test_admin_can_filter_orders_by_status() -> None:
     assert approved_order["id"] not in filtered_order_ids
 
 
+def test_orders_include_requester_summary_and_filter_active_statuses() -> None:
+    client = TestClient(app)
+
+    admin_username = "order_active_filter_admin"
+    admin_email = "order_active_filter_admin@example.com"
+    requester_username = "order_active_filter_requester"
+    requester_email = "order_active_filter_requester@example.com"
+    password = "password123"
+    material_code = "TEST-ORDER-ACTIVE-FILTER-001"
+
+    clean_up_order_workflow_test_data(admin_username, admin_email, material_code)
+    clean_up_order_workflow_test_data(requester_username, requester_email, material_code)
+    create_test_admin(admin_username, admin_email, password)
+    requester = create_test_viewer(client, requester_username, requester_email, password)
+    admin_headers = login_test_user(client, admin_username, password)
+    requester_headers = login_test_user(client, requester_username, password)
+    material = create_test_material(
+        client,
+        admin_headers,
+        material_code,
+        "Order Active Filter Material",
+        10,
+    )
+
+    submitted_order = create_test_order(client, requester_headers, material["id"])
+    approved_order = create_test_order(client, requester_headers, material["id"])
+    canceled_order = create_test_order(client, requester_headers, material["id"])
+
+    assert client.post(f"/orders/{approved_order['id']}/approve", headers=admin_headers).status_code == 200
+    assert client.post(f"/orders/{canceled_order['id']}/cancel", headers=requester_headers).status_code == 200
+
+    active_response = client.get(
+        "/orders",
+        params={"requested_by_user_id": requester["id"], "active_only": True},
+        headers=admin_headers,
+    )
+
+    assert active_response.status_code == 200
+    active_orders = page_items(active_response)
+    assert {order["id"] for order in active_orders} == {submitted_order["id"], approved_order["id"]}
+    assert all(order["requested_by_username"] == requester_username for order in active_orders)
+
+    detail_response = client.get(f"/orders/{submitted_order['id']}", headers=admin_headers)
+
+    assert detail_response.status_code == 200
+    assert detail_response.json()["requested_by_username"] == requester_username
+
+
 def test_admin_can_filter_orders_by_material_id() -> None:
     client = TestClient(app)
 

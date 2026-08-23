@@ -23,6 +23,11 @@ export interface PaginationParams {
   size?: number
 }
 
+export interface OrderListParams extends PaginationParams {
+  include_archived?: boolean
+  active_only?: boolean
+}
+
 export interface LoginPayload {
   username: string
   password: string
@@ -120,6 +125,7 @@ export interface MaterialSearchParams extends PaginationParams {
 export interface Order {
   id: number
   requested_by_user_id: number
+  requested_by_username: string
   material_id: number
   requested_quantity: number
   reserved_quantity: number
@@ -160,6 +166,7 @@ export interface PendingOrder {
   material_id: number
   material_code: string
   material_name: string
+  unit: string
   requested_quantity: number
   status: string
   request_notes: string | null
